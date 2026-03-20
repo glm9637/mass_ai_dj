@@ -64,7 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 webcomponent_name="ytm-ai-dj-panel",
                 sidebar_title="AI DJ",
                 sidebar_icon="mdi:music-box-multiple",
-                module_url="/ytm_ai_dj_frontend/ytm-ai-dj-panel.js",
+                module_url="/ytm_ai_dj_frontend/ytm-ai-dj-panel.js?v=2",
                 trust_external=False,
             )
             

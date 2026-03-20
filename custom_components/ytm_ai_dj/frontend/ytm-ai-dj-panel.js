@@ -405,12 +405,11 @@ constructor() {
             <label><strong>Target Speaker</strong></label>
             <select 
               style="width: 100%; padding: 10px; margin-top: 8px; border-radius: 4px;"
-              .value=${party.media_player_id || ''}
               @change=${e => this.updateParty(party.id, { media_player_id: e.target.value })}
             >
-              <option value="">Select a Speaker</option>
+              <option value="" ?selected=${!party.media_player_id}>Select a Speaker</option>
               ${mediaPlayers.map(eid => html`
-                <option value="${eid}">${this.hass.states[eid].attributes.friendly_name || eid}</option>
+                <option value="${eid}" ?selected=${party.media_player_id === eid}>${this.hass.states[eid].attributes.friendly_name || eid}</option>
               `)}
             </select>
           </div>
