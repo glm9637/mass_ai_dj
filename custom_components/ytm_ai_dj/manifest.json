@@ -1,6 +1,6 @@
 {
   "domain": "ytm_ai_dj",
-  "name": "AI DJ",
+  "name": "YouTube Music AI DJ",
   "documentation": "https://github.com/glm9637/ytm_ai_dj",
   "dependencies": [],
   "codeowners": ["@glm9637"],
