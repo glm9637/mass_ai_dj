@@ -74,7 +74,7 @@ async def ws_update_party(
     """Handle update party command."""
     store = hass.data[DOMAIN].get("store")
     updates = {}
-    for key in ["vibe", "start_time", "end_time", "active"]:
+    for key in ["vibe", "start_time", "end_time", "active", "media_player_id"]:
         if key in msg:
             updates[key] = msg[key]
             

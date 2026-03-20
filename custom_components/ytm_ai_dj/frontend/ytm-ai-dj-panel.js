@@ -9,7 +9,8 @@ class YtmAiDjPanel extends LitElement {
       panel: { type: Object },
       parties: { type: Array },
       selectedPartyId: { type: String },
-      newPartyName: { type: String }
+      newPartyName: { type: String },
+      sidebarOpen: { type: Boolean }
     };
   }
 
@@ -32,6 +33,47 @@ class YtmAiDjPanel extends LitElement {
         background: var(--card-background-color, #fff);
         padding: 16px;
         overflow-y: auto;
+        transition: transform 0.3s ease;
+      }
+      .sidebar-overlay {
+        display: none;
+      }
+      .menu-btn {
+        background: transparent;
+        color: var(--primary-text-color);
+        font-size: 24px;
+        padding: 4px 8px;
+        margin-right: 12px;
+        display: none;
+        cursor: pointer;
+        border: none;
+      }
+      @media (max-width: 768px) {
+        .menu-btn {
+          display: block;
+        }
+        .sidebar {
+          position: fixed;
+          top: 0;
+          bottom: 0;
+          left: 0;
+          z-index: 100;
+          transform: translateX(-100%);
+          box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+        }
+        .sidebar.open {
+          transform: translateX(0);
+        }
+        .sidebar-overlay.open {
+          display: block;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0,0,0,0.5);
+          z-index: 99;
+        }
       }
       .main {
         flex: 1;
@@ -163,10 +205,17 @@ constructor() {
     this.parties = [];
     this.selectedPartyId = null;
     this.newPartyName = "";
+    this.sidebarOpen = window.innerWidth > 768;
+    this._handleResize = () => {
+      if (window.innerWidth > 768 && !this.sidebarOpen) {
+        this.sidebarOpen = true;
+      }
+    };
   }
 
   connectedCallback() {
     super.connectedCallback();
+    window.addEventListener('resize', this._handleResize);
     this._pollingInterval = setInterval(() => {
       this.fetchParties();
     }, 10000); 
@@ -174,6 +223,7 @@ constructor() {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener('resize', this._handleResize);
     if (this._pollingInterval) {
       clearInterval(this._pollingInterval);
     }
@@ -294,7 +344,8 @@ constructor() {
 
   renderSidebar() {
     return html`
-      <div class="sidebar">
+      <div class="sidebar-overlay ${this.sidebarOpen ? 'open' : ''}" @click=${() => this.sidebarOpen = false}></div>
+      <div class="sidebar ${this.sidebarOpen ? 'open' : ''}">
         <h2>AI DJ Parties</h2>
         <div class="form-group">
           <input 
@@ -311,7 +362,10 @@ constructor() {
           ${this.parties.map(party => html`
             <div 
               class="party-item ${this.selectedPartyId === party.id ? 'selected' : ''}"
-              @click=${() => this.selectedPartyId = party.id}
+              @click=${() => {
+                this.selectedPartyId = party.id;
+                if (window.innerWidth <= 768) this.sidebarOpen = false;
+              }}
             >
               ${party.name}
               ${party.active ? html`<span class="badge">Active</span>` : ''}
@@ -327,18 +381,22 @@ constructor() {
     
     if (!party) {
       return html`
-        <div class="main" style="display: flex; align-items: center; justify-content: center; color: gray;">
+        <div class="main" style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: gray;">
+          <button class="menu-btn" style="margin-bottom: 24px; display: inline-block; font-size: 18px;" @click=${() => this.sidebarOpen = true}>☰ Open Menu</button>
           <h2>Select or create a party to manage the AI DJ</h2>
         </div>
       `;
     }
 
-const mediaPlayers = Object.keys(this.hass.states).filter(eid => eid.startsWith('media_player.'));
+    const mediaPlayers = this.hass ? Object.keys(this.hass.states).filter(eid => eid.startsWith('media_player.')) : [];
 
     return html`
       <div class="main">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-          <h2 style="margin: 0">${party.name}</h2>
+          <div style="display: flex; align-items: center;">
+            <button class="menu-btn" @click=${() => this.sidebarOpen = !this.sidebarOpen}>☰</button>
+            <h2 style="margin: 0">${party.name}</h2>
+          </div>
           <button class="danger" @click=${() => this.deleteParty(party.id)}>Delete Party</button>
         </div>
 
