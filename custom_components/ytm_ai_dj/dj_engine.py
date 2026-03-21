@@ -236,7 +236,7 @@ class DJEngine:
         if video_id:
             target_player = party.get("media_player_id")
             if target_player:
-                ytm_url = f"https://music.youtube.com/watch?v={video_id}"
+                ytm_url = f"ytmusic://track/{video_id}"
                 
                 _LOGGER.info("Enqueuing %s to live player: %s", ytm_url, target_player)
                 
