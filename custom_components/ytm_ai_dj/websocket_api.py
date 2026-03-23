@@ -1,5 +1,7 @@
 """Websocket API for AI DJ."""
 from __future__ import annotations
+import logging
+_LOGGER = logging.getLogger(__name__)
 
 import voluptuous as vol
 
@@ -36,6 +38,37 @@ async def ws_get_parties(
     parties = store.get_parties()
     connection.send_result(msg["id"], parties)
 
+@websocket_api.websocket_command({
+    vol.Required("type"): "ytm_ai_dj/players/get",
+})
+@websocket_api.async_response
+def websocket_get_players(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Gibt nur Music Assistant Player zurück."""
+    _LOGGER.error(">>> AI DJ WEBSOCKET: get_players was triggered! ID: %s", msg.get("id"))
+    try:
+        players = []
+        states = hass.states.async_all("media_player")
+        _LOGGER.error(">>> AI DJ WEBSOCKET: Found %s media_player states in HA", len(states))
+        if not states:
+            connection.send_error(msg["id"], "not_ready", "State not ready")
+            return
+        for state in states:
+            if state.entity_id.startswith("media_player.mass_"):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                clean_name = friendly_name.replace(" (Music Assistant)", "")
+                
+                players.append({
+                    "entity_id": state.entity_id,
+                    "name": clean_name
+                })
+        _LOGGER.error(">>> AI DJ WEBSOCKET: Sending %s players back to UI", len(players))
+        connection.send_result(msg["id"], players)
+        
+    except Exception as err:
+        _LOGGER.error(">>> AI DJ WEBSOCKET CRASH: %s", err)
+        connection.send_error(msg["id"], "get_players_failed", str(err))
 
 @websocket_api.websocket_command(
     {
@@ -143,30 +176,3 @@ async def ws_clear_history(
     except Exception as err:
         connection.send_error(msg["id"], "clear_failed", str(err))
 
-@websocket_api.websocket_command({
-    vol.Required("type"): "ytm_ai_dj/players/get",
-})
-@websocket_api.async_response
-@callback
-async def websocket_get_players(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
-) -> None:
-    """Gibt nur Music Assistant Player zurück."""
-    try:
-        players = []
-        entity_ids = hass.states.async_entity_ids("media_player")
-        
-        for entity_id in entity_ids:
-            if entity_id.startswith("media_player.mass_"):
-                state = hass.states.get(entity_id)
-                if state:
-                    friendly_name = state.attributes.get("friendly_name", entity_id)
-                    clean_name = friendly_name.replace(" (Music Assistant)", "")
-                    
-                    players.append({
-                        "entity_id": entity_id,
-                        "name": clean_name
-                    })
-        connection.send_result(msg["id"], players)
-    except Exception as err:
-        connection.send_error(msg["id"], "get_players_failed", str(err))
