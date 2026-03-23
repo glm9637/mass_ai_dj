@@ -241,7 +241,7 @@ class DJEngine:
                 _LOGGER.info("Enqueuing %s to live player: %s", ytm_url, target_player)
                 
                 await self.hass.services.async_call(
-                    "mass",
+                    "music_assistant",
                     "play_media",
                     {
                         "target": {"entity_id": target_player}, 
