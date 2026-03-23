@@ -85,7 +85,11 @@ class DJEngine:
         party_id = party["id"]
         _LOGGER.error(">>> [3/7] Processing Party: %s", party.get("name"))
         
-        # 1. Ensure Playlist Exists
+        # Initialize internal queue tracker if it doesn't exist
+        if not hasattr(self, "_local_queued_counts"):
+            self._local_queued_counts = {}
+        
+        # 1. Ensure Playlist Exists (Als Archiv)
         playlist_id = self._playlist_ids.get(party_id)
         if not playlist_id:
             playlist_id = await self.hass.async_add_executor_job(
@@ -93,58 +97,60 @@ class DJEngine:
             )
             if playlist_id:
                 self._playlist_ids[party_id] = playlist_id
-                _LOGGER.error(">>> [4/7] Playlist ID found/created: %s", playlist_id)
             else:
                 _LOGGER.error(">>> [CRASH] Failed to create or find playlist for party %s", party["name"])
                 return
 
-        # 2. Sync History (Lokale Abfrage über Music Assistant)
+        # 2. Lokalen Player auslesen & Queue intelligent verwalten
         target_player = party.get("media_player_id")
-        if target_player:
-            state = self.hass.states.get(target_player)
-            if state and state.state in ["playing", "paused"]:
-                current_title = state.attributes.get("media_title")
-                current_artist = state.attributes.get("media_artist")
-                
-                if current_title and current_artist:
-                    current_song_id = f"{current_artist} - {current_title}"
-                    last_seen = self._last_history_ids.get(party_id)
-                    
-                    if current_song_id != last_seen:
-                        self._last_history_ids[party_id] = current_song_id
-                        song_already_in_party_history = any(
-                            current_title.lower() == h.get("title", "").lower() and 
-                            current_artist.lower() == h.get("artist", "").lower()
-                            for h in party.get("history", [])
-                        )
-                        if not song_already_in_party_history:
-                            await store.add_to_history(party_id, current_artist, current_title)
-                            _LOGGER.error(">>> [HISTORY] Synced local player to history: %s", current_title)
+        player_state = self.hass.states.get(target_player) if target_player else None
 
-        # 3. Check Queue Size
-        playlist = await self.hass.async_add_executor_job(ytm.get_playlist, playlist_id)
-        tracks = playlist.get("tracks", [])
-        _LOGGER.error(">>> [5/7] Found %s tracks in YTM Playlist", len(tracks))
-        
-        history_titles = [h.get("title", "").lower() for h in party.get("history", [])]
-        
-        queued_count = 0
-        for track in tracks:
-            title = track.get("title", "").lower()
-            if title not in history_titles:
-                queued_count += 1
+        if player_state and player_state.state in ["idle", "standby", "off"]:
+            # Player ist komplett leer/gestoppt. Wir setzen unseren Queue-Zähler auf 0, um einen sofortigen Start zu erzwingen.
+            if self._local_queued_counts.get(party_id, 0) > 0:
+                _LOGGER.error(">>> [QUEUE] Player is idle. Resetting internal queue counter to 0.")
+            self._local_queued_counts[party_id] = 0
+            
+        elif player_state and player_state.state in ["playing", "paused"]:
+            current_title = player_state.attributes.get("media_title")
+            current_artist = player_state.attributes.get("media_artist")
+            
+            if current_title and current_artist:
+                current_song_id = f"{current_artist} - {current_title}"
+                last_seen = self._last_history_ids.get(party_id)
                 
-        _LOGGER.error(">>> [6/7] Unplayed tracks in queue: %s", queued_count)
+                if current_song_id != last_seen:
+                    self._last_history_ids[party_id] = current_song_id
+                    
+                    # Ein neues Lied hat begonnen! Wir ziehen eins von unserer internen Warteschlange ab.
+                    current_q = self._local_queued_counts.get(party_id, 0)
+                    if current_q > 0:
+                        self._local_queued_counts[party_id] = current_q - 1
+                        _LOGGER.error(">>> [QUEUE] Song started playing. Internal queue reduced to %s", self._local_queued_counts[party_id])
+                    
+                    # In die UI Historie eintragen
+                    song_already_in_party_history = any(
+                        current_title.lower() == h.get("title", "").lower() and 
+                        current_artist.lower() == h.get("artist", "").lower()
+                        for h in party.get("history", [])
+                    )
+                    if not song_already_in_party_history:
+                        await store.add_to_history(party_id, current_artist, current_title)
+                        _LOGGER.error(">>> [HISTORY] Synced local player to history: %s", current_title)
+
+        # 3. Check Internal Queue Size
+        queued_count = self._local_queued_counts.get(party_id, 0)
+        _LOGGER.error(">>> [6/7] Internal Queue Count (Unplayed in MASS): %s", queued_count)
                 
         if queued_count < 2:
             _LOGGER.error(">>> [7/7] Queue low. Triggering LLM...")
             await self._generate_and_add_song(party, playlist_id, ytm, store, gemini_key)
-            
+
     async def _generate_and_add_song(
         self, party: dict[str, Any], playlist_id: str, ytm: YTMusic, store: PartyStore, gemini_key: str
     ) -> None:
         """Trigger Gemini via REST API to get a recommendation and add to YTM playlist."""
-        _LOGGER.error(">>> [LLM] Asking Gemini for a song...")
+
         start_time_str = party.get("start_time")
         end_time_str = party.get("end_time")
         now = dt_util.utcnow()
@@ -207,14 +213,14 @@ class DJEngine:
             parsed_data = json.loads(response_text)
             artist = parsed_data.get("artist", "")
             title = parsed_data.get("title", "")
-            _LOGGER.error("LLM Suggested: %s by %s", title, artist)
+            _LOGGER.info("LLM Suggested: %s by %s", title, artist)
         except Exception as err:
             _LOGGER.error("Failed to query Gemini API or parse response: %s", err)
             return
 
         def search_and_add_to_playlist():
             query = f"{title} {artist}"
-            _LOGGER.error(">>> [YTM] Searching YouTube Music for: %s", query)
+            _LOGGER.info(">>> [YTM] Searching YouTube Music for: %s", query)
             results = ytm.search(query, filter="songs", limit=3)
 
             if not results:
@@ -245,7 +251,6 @@ class DJEngine:
             return None
 
         # Execute search and playlist addition
-        # Execute search and playlist addition
         video_id = await self.hass.async_add_executor_job(search_and_add_to_playlist)
 
         if video_id:
@@ -261,6 +266,12 @@ class DJEngine:
                         target={"entity_id": target_player}
                     )
                     _LOGGER.error(">>> [SUCCESS] Song added to Music Assistant Queue!")
+                    
+                    # WICHTIG: Erhöhe unseren internen Queue-Zähler!
+                    if not hasattr(self, "_local_queued_counts"):
+                        self._local_queued_counts = {}
+                    self._local_queued_counts[party["id"]] = self._local_queued_counts.get(party["id"], 0) + 1
+                    
                 except Exception as e:
                     _LOGGER.error(">>> [CRASH] Home Assistant rejected the service call: %s", e)
         else:
