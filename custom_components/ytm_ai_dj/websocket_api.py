@@ -44,7 +44,7 @@ async def ws_get_parties(
 async def websocket_get_players(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Returns ONLY players created by the Music Assistant integration."""
+    """Returns ALL players and reveals their internal platform name."""
     try:
         players = []
         states = hass.states.async_all("media_player")
@@ -54,14 +54,17 @@ async def websocket_get_players(
             entity_id = state.entity_id
             entry = registry.async_get(entity_id)
             
-            # Check if the entity exists in the registry AND belongs to Music Assistant
-            if entry and entry.platform == "mass":
-                friendly_name = state.attributes.get("friendly_name", entity_id)
-                
-                players.append({
-                    "entity_id": entity_id,
-                    "name": friendly_name
-                })
+            # Extract the true platform name (e.g., 'cast', 'music_assistant', 'spotify')
+            platform = entry.platform if entry else "unknown"
+            friendly_name = state.attributes.get("friendly_name", entity_id)
+            
+            # Build an X-Ray name: "Partyraum [Platform: music_assistant]"
+            display_name = f"{friendly_name} [Platform: {platform}]"
+            
+            players.append({
+                "entity_id": entity_id,
+                "name": display_name
+            })
                 
         connection.send_result(msg["id"], players)
     except Exception as err:
