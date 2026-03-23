@@ -1,8 +1,7 @@
 """Websocket API for AI DJ."""
 from __future__ import annotations
-import logging
-_LOGGER = logging.getLogger(__name__)
 
+from homeassistant.helpers import entity_registry as er
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
@@ -42,33 +41,32 @@ async def ws_get_parties(
     vol.Required("type"): "ytm_ai_dj/players/get",
 })
 @websocket_api.async_response
-def websocket_get_players(
+async def websocket_get_players(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Gibt nur Music Assistant Player zurück."""
-    _LOGGER.error(">>> AI DJ WEBSOCKET: get_players was triggered! ID: %s", msg.get("id"))
+    """Returns ONLY players created by the Music Assistant integration."""
     try:
         players = []
         states = hass.states.async_all("media_player")
-        _LOGGER.error(">>> AI DJ WEBSOCKET: Found %s media_player states in HA", len(states))
-        if not states:
-            connection.send_error(msg["id"], "not_ready", "State not ready")
-            return
+        registry = er.async_get(hass)
+        
         for state in states:
-            if state.entity_id.startswith("media_player.mass_"):
-                friendly_name = state.attributes.get("friendly_name", state.entity_id)
-                clean_name = friendly_name.replace(" (Music Assistant)", "")
+            entity_id = state.entity_id
+            entry = registry.async_get(entity_id)
+            
+            # Check if the entity exists in the registry AND belongs to Music Assistant
+            if entry and entry.platform == "mass":
+                friendly_name = state.attributes.get("friendly_name", entity_id)
                 
                 players.append({
-                    "entity_id": state.entity_id,
-                    "name": clean_name
+                    "entity_id": entity_id,
+                    "name": friendly_name
                 })
-        _LOGGER.error(">>> AI DJ WEBSOCKET: Sending %s players back to UI", len(players))
+                
         connection.send_result(msg["id"], players)
-        
     except Exception as err:
-        _LOGGER.error(">>> AI DJ WEBSOCKET CRASH: %s", err)
         connection.send_error(msg["id"], "get_players_failed", str(err))
+        
 
 @websocket_api.websocket_command(
     {
