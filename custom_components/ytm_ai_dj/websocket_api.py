@@ -146,8 +146,8 @@ async def ws_clear_history(
 @websocket_api.websocket_command({
     vol.Required("type"): "ytm_ai_dj/players/get",
 })
-@callback
-def websocket_get_players(hass, connection, msg):
+@websocket_api.async_response
+async def websocket_get_players(hass, connection, msg):
     """Gibt nur Music Assistant Player zurück."""
     players = []
     entity_ids = hass.states.async_entity_ids("media_player")
