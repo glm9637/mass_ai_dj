@@ -1,5 +1,8 @@
-const LitElement = Object.getPrototypeOf(customElements.get("ha-panel-config"));
-const { html, css } = LitElement;
+import {
+  LitElement,
+  html,
+  css,
+} from "https://unpkg.com/lit@3.3.2/index.js?module";
 
 class YtmAiDjPanel extends LitElement {
   static get properties() {
