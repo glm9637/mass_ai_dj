@@ -1,0 +1,11 @@
+{
+  "domain": "mass_ai_dj",
+  "name": "Music assistant AI DJ",
+  "documentation": "https://github.com/glm9637/mass_ai_dj",
+  "dependencies": [],
+  "codeowners": ["@glm9637"],
+  "requirements": [],
+  "config_flow": true,
+  "iot_class": "cloud_polling",
+  "version": "1.0.0"
+}

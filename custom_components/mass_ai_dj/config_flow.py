@@ -13,16 +13,14 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from ytmusicapi import YTMusic
 
-from .const import DOMAIN, CONF_GEMINI_API_KEY, CONF_YTM_HEADERS
+from .const import DOMAIN, CONF_GEMINI_API_KEY
 
 _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_GEMINI_API_KEY): str,
-        vol.Required(CONF_YTM_HEADERS): str,
     }
 )
 
@@ -44,35 +42,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.error("Gemini Connection failed: %s", err)
         raise InvalidGeminiKey from err
 
-    # 2. Validate YTM
-    ytm_headers_str = data[CONF_YTM_HEADERS].strip()
-    
-    if not ytm_headers_str.startswith("{"):
-        headers_dict = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Accept": "*/*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Content-Type": "application/json",
-            "X-Goog-AuthUser": "0",
-            "x-origin": "https://music.youtube.com",
-            "cookie": ytm_headers_str,
-            "Cookie": ytm_headers_str,
-            "authorization": "SAPISIDHASH 1",
-            "Authorization": "SAPISIDHASH 1"
-        }
-        ytm_headers_str = json.dumps(headers_dict)
-        data[CONF_YTM_HEADERS] = ytm_headers_str
-
-    try:
-        def test_ytm():
-            ytm = YTMusic(auth=ytm_headers_str)
-            # Holt einen Song, um zu prüfen, ob der Auth durchgeht
-            ytm.get_library_songs(limit=1)
-        
-        await hass.async_add_executor_job(test_ytm)
-    except Exception as err:
-        _LOGGER.error("YTMusic Auth Validation failed: %s", err)
-        raise InvalidYTMHeaders from err
 
     return {"title": "AI DJ"}
 
@@ -94,8 +63,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 info = await validate_input(self.hass, user_input)
             except InvalidGeminiKey:
                 errors["base"] = "invalid_gemini_key"
-            except InvalidYTMHeaders:
-                errors["base"] = "invalid_ytm_headers"
             except Exception:
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -108,6 +75,3 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class InvalidGeminiKey(HomeAssistantError):
     """Error to indicate there is an invalid Gemini API key."""
-
-class InvalidYTMHeaders(HomeAssistantError):
-    """Error to indicate there are invalid YouTube Music headers."""

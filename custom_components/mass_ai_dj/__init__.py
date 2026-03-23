@@ -4,14 +4,12 @@ from __future__ import annotations
 import logging
 import os
 
-from ytmusicapi import YTMusic
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.components import panel_custom
 from homeassistant.components.http import StaticPathConfig
 
-from .const import DOMAIN, CONF_GEMINI_API_KEY, CONF_YTM_HEADERS
+from .const import DOMAIN, CONF_GEMINI_API_KEY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,13 +23,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Extract credentials
     gemini_key = entry.data[CONF_GEMINI_API_KEY]
-    ytm_headers = entry.data[CONF_YTM_HEADERS]
 
     try:
         def init_services():
-            # Only initialize YTMusic here. Gemini is now handled via REST API.
-            ytm = YTMusic(auth=ytm_headers)
-            return {"ytm": ytm, "gemini_key": gemini_key}
+            return {"gemini_key": gemini_key}
         
         services = await hass.async_add_executor_job(init_services)
         hass.data[DOMAIN][entry.entry_id] = services
@@ -50,21 +45,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.data[DOMAIN]["engine"] = engine
             engine.start()
             
-            frontend_path = hass.config.path("custom_components/ytm_ai_dj/frontend")
+            frontend_path = hass.config.path("custom_components/mass_ai_dj/frontend")
             if not os.path.exists(frontend_path):
                 os.makedirs(frontend_path, exist_ok=True)
                 
             await hass.http.async_register_static_paths([
-                StaticPathConfig("/ytm_ai_dj_frontend", frontend_path, False)
+                StaticPathConfig("/mass_ai_dj_frontend", frontend_path, False)
             ])
             
             await panel_custom.async_register_panel(
                 hass,
                 frontend_url_path="ai-dj",
-                webcomponent_name="ytm-ai-dj-panel",
+                webcomponent_name="mass-ai-dj-panel",
                 sidebar_title="AI DJ",
                 sidebar_icon="mdi:music-box-multiple",
-                module_url="/ytm_ai_dj_frontend/ytm-ai-dj-panel.js?v=2",
+                module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=2",
                 trust_external=False,
             )
             

@@ -4,7 +4,7 @@ import {
   css,
 } from "https://unpkg.com/lit@3.3.2/index.js?module";
 
-class YtmAiDjPanel extends LitElement {
+class MassAiDjPanel extends LitElement {
   static get properties() {
     return {
       hass: { type: Object },
@@ -244,7 +244,7 @@ constructor() {
     if (!this.hass) return;
     try {
       const parties = await this.hass.callWS({
-        type: "ytm_ai_dj/parties/get"
+        type: "mass_ai_dj/parties/get"
       });
       this.parties = parties || [];
     } catch (err) {
@@ -256,7 +256,7 @@ constructor() {
     if (!this.hass) return;
     try {
       const players = await this.hass.callWS({
-        type: "ytm_ai_dj/players/get"
+        type: "mass_ai_dj/players/get"
       });
       this.massPlayers = players || [];
     } catch (err) {
@@ -268,7 +268,7 @@ constructor() {
     if (!this.newPartyName.trim() || !this.hass) return;
     try {
       const party = await this.hass.callWS({
-        type: "ytm_ai_dj/parties/create",
+        type: "mass_ai_dj/parties/create",
         name: this.newPartyName
       });
       this.newPartyName = "";
@@ -283,7 +283,7 @@ constructor() {
     if (!this.hass) return;
     try {
       const updatedParty = await this.hass.callWS({
-        type: "ytm_ai_dj/parties/update",
+        type: "mass_ai_dj/parties/update",
         party_id: partyId,
         ...updates
       });
@@ -302,7 +302,7 @@ constructor() {
     if (!this.hass || !confirm("Are you sure you want to delete this party?")) return;
     try {
       await this.hass.callWS({
-        type: "ytm_ai_dj/parties/delete",
+        type: "mass_ai_dj/parties/delete",
         party_id: partyId
       });
       if (this.selectedPartyId === partyId) {
@@ -330,7 +330,7 @@ constructor() {
     if (!this.hass) return;
     try {
       const updatedParty = await this.hass.callWS({
-        type: "ytm_ai_dj/history/delete",
+        type: "mass_ai_dj/history/delete",
         party_id: partyId,
         index: index
       });
@@ -348,7 +348,7 @@ constructor() {
     if (!this.hass || !confirm("Clear all history?")) return;
     try {
       const updatedParty = await this.hass.callWS({
-        type: "ytm_ai_dj/history/clear",
+        type: "mass_ai_dj/history/clear",
         party_id: partyId
       });
       const partyIndex = this.parties.findIndex(p => p.id === partyId);
@@ -467,7 +467,7 @@ constructor() {
         <div class="card" style="display: flex; justify-content: space-between; align-items: center; background: ${party.active ? 'var(--ha-color-green-20, #0a3a1d)' : 'var(--card-background-color)'}">
           <div>
             <h3 style="margin: 0 0 8px 0;">DJ Status: ${party.active ? 'Active' : 'Stopped'}</h3>
-            <p style="margin: 0; color: gray;">When active, the AI DJ monitors your YouTube Music queue.</p>
+            <p style="margin: 0; color: gray;">When active, the AI DJ monitors your Music assistant queue.</p>
           </div>
           <button 
             class="${party.active ? 'danger' : 'success'}" 
@@ -512,4 +512,4 @@ constructor() {
   }
 }
 
-customElements.define("ytm-ai-dj-panel", YtmAiDjPanel);
+customElements.define("mass-ai-dj-panel", MassAiDjPanel);

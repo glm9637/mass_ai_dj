@@ -21,7 +21,7 @@ def async_setup_websocket_api(hass: HomeAssistant) -> None:
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ytm_ai_dj/parties/get",
+        vol.Required("type"): "mass_ai_dj/parties/get",
     }
 )
 @websocket_api.async_response
@@ -38,7 +38,7 @@ async def ws_get_parties(
     connection.send_result(msg["id"], parties)
 
 @websocket_api.websocket_command({
-    vol.Required("type"): "ytm_ai_dj/players/get",
+    vol.Required("type"): "mass_ai_dj/players/get",
 })
 @websocket_api.async_response
 async def websocket_get_players(
@@ -54,7 +54,6 @@ async def websocket_get_players(
             entity_id = state.entity_id
             entry = registry.async_get(entity_id)
             
-            # THE FINAL FIX: Filter strictly by the correct platform name
             if entry and entry.platform == "music_assistant":
                 friendly_name = state.attributes.get("friendly_name", entity_id)
                 
@@ -70,7 +69,7 @@ async def websocket_get_players(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ytm_ai_dj/parties/create",
+        vol.Required("type"): "mass_ai_dj/parties/create",
         vol.Required("name"): str,
     }
 )
@@ -89,7 +88,7 @@ async def ws_create_party(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ytm_ai_dj/parties/update",
+        vol.Required("type"): "mass_ai_dj/parties/update",
         vol.Required("party_id"): str,
         vol.Optional("vibe"): str,
         vol.Optional("start_time"): vol.Any(str, None),
@@ -118,7 +117,7 @@ async def ws_update_party(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ytm_ai_dj/parties/delete",
+        vol.Required("type"): "mass_ai_dj/parties/delete",
         vol.Required("party_id"): str,
     }
 )
@@ -136,7 +135,7 @@ async def ws_delete_party(
         
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ytm_ai_dj/history/delete",
+        vol.Required("type"): "mass_ai_dj/history/delete",
         vol.Required("party_id"): str,
         vol.Required("index"): int,
     }
@@ -157,7 +156,7 @@ async def ws_remove_history(
         
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ytm_ai_dj/history/clear",
+        vol.Required("type"): "mass_ai_dj/history/clear",
         vol.Required("party_id"): str,
     }
 )

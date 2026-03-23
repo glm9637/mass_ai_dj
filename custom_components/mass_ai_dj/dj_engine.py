@@ -1,13 +1,10 @@
 """Background DJ Engine to drive active AI DJ parties."""
 from __future__ import annotations
 
-import asyncio
 import datetime
 import json
 import logging
 from typing import Any
-
-from ytmusicapi import YTMusic
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
@@ -33,7 +30,6 @@ class DJEngine:
         self._unsub_interval = None
         self._playlist_ids: dict[str, str] = {}
         
-        # We need to track the latest YTM history so we know when a new song is played
         self._last_history_ids: dict[str, str] = {}
 
     def start(self) -> None:
@@ -53,62 +49,41 @@ class DJEngine:
 
     async def _async_poll(self, now: datetime.datetime) -> None:
         """The 30-second polling loop."""
-        _LOGGER.error(">>> [1/7] HEARTBEAT: Polling loop started")
-        
         store: PartyStore | None = self.hass.data[DOMAIN].get("store")
         services = self.hass.data[DOMAIN]
         
-        ytm: YTMusic | None = None
         gemini_key: str | None = None
-        
+
         for key, value in services.items():
-            if isinstance(value, dict) and "ytm" in value:
-                ytm = value["ytm"]
+            if isinstance(value, dict) and "gemini_key" in value:
                 gemini_key = value.get("gemini_key") 
                 break
                 
-        if not store or not ytm or not gemini_key:
-            _LOGGER.error(">>> [CRASH] Missing store, ytm, or gemini_key in memory!")
+        if not store or not gemini_key:
             return
 
         active_parties = [p for p in store.get_parties() if p.get("active")]
-        _LOGGER.error(">>> [2/7] Found %s active parties", len(active_parties))
         
         for party in active_parties:
             try:
-                await self._process_party(party, store, ytm, gemini_key)
+                await self._process_party(party, store, gemini_key)
             except Exception as err:
-                _LOGGER.error(">>> [CRASH] Error processing party %s: %s", party.get("name"), err)
+                _LOGGER.error("Error processing party %s: %s", party.get("name"), err)
 
-    async def _process_party(self, party: dict[str, Any], store: PartyStore, ytm: YTMusic, gemini_key: str) -> None:
-        """Process an individual active party."""
+    async def _process_party(self, party: dict[str, Any], store: PartyStore, gemini_key: str) -> None:
+        """Process an individual active party (Local Queue Only)."""
         party_id = party["id"]
-        _LOGGER.error(">>> [3/7] Processing Party: %s", party.get("name"))
         
-        # Initialize internal queue tracker if it doesn't exist
         if not hasattr(self, "_local_queued_counts"):
             self._local_queued_counts = {}
-        
-        # 1. Ensure Playlist Exists (Als Archiv)
-        playlist_id = self._playlist_ids.get(party_id)
-        if not playlist_id:
-            playlist_id = await self.hass.async_add_executor_job(
-                self._ensure_playlist, ytm, party["name"]
-            )
-            if playlist_id:
-                self._playlist_ids[party_id] = playlist_id
-            else:
-                _LOGGER.error(">>> [CRASH] Failed to create or find playlist for party %s", party["name"])
-                return
 
-        # 2. Lokalen Player auslesen & Queue intelligent verwalten
+        # 1. Sync History & Manage Local Queue
         target_player = party.get("media_player_id")
         player_state = self.hass.states.get(target_player) if target_player else None
 
         if player_state and player_state.state in ["idle", "standby", "off"]:
-            # Player ist komplett leer/gestoppt. Wir setzen unseren Queue-Zähler auf 0, um einen sofortigen Start zu erzwingen.
             if self._local_queued_counts.get(party_id, 0) > 0:
-                _LOGGER.error(">>> [QUEUE] Player is idle. Resetting internal queue counter to 0.")
+                _LOGGER.info("Player is idle. Resetting AI DJ queue counter.")
             self._local_queued_counts[party_id] = 0
             
         elif player_state and player_state.state in ["playing", "paused"]:
@@ -122,13 +97,12 @@ class DJEngine:
                 if current_song_id != last_seen:
                     self._last_history_ids[party_id] = current_song_id
                     
-                    # Ein neues Lied hat begonnen! Wir ziehen eins von unserer internen Warteschlange ab.
+                    # Deduct from our mental queue
                     current_q = self._local_queued_counts.get(party_id, 0)
                     if current_q > 0:
                         self._local_queued_counts[party_id] = current_q - 1
-                        _LOGGER.error(">>> [QUEUE] Song started playing. Internal queue reduced to %s", self._local_queued_counts[party_id])
                     
-                    # In die UI Historie eintragen
+                    # Add to UI History
                     song_already_in_party_history = any(
                         current_title.lower() == h.get("title", "").lower() and 
                         current_artist.lower() == h.get("artist", "").lower()
@@ -136,20 +110,19 @@ class DJEngine:
                     )
                     if not song_already_in_party_history:
                         await store.add_to_history(party_id, current_artist, current_title)
-                        _LOGGER.error(">>> [HISTORY] Synced local player to history: %s", current_title)
+                        _LOGGER.info("Now Playing: %s by %s", current_title, current_artist)
 
-        # 3. Check Internal Queue Size
+        # 2. Check Queue and Trigger LLM
         queued_count = self._local_queued_counts.get(party_id, 0)
-        _LOGGER.error(">>> [6/7] Internal Queue Count (Unplayed in MASS): %s", queued_count)
-                
+        
         if queued_count < 2:
-            _LOGGER.error(">>> [7/7] Queue low. Triggering LLM...")
-            await self._generate_and_add_song(party, playlist_id, ytm, store, gemini_key)
+            _LOGGER.debug("Queue low (%s). Triggering LLM...", queued_count)
+            await self._generate_and_add_song(party, store, gemini_key)
 
     async def _generate_and_add_song(
-        self, party: dict[str, Any], playlist_id: str, ytm: YTMusic, store: PartyStore, gemini_key: str
+        self, party: dict[str, Any], store: PartyStore, gemini_key: str
     ) -> None:
-        """Trigger Gemini via REST API to get a recommendation and add to YTM playlist."""
+        """Trigger Gemini via REST API to get a recommendation and add to MASS playlist."""
 
         start_time_str = party.get("start_time")
         end_time_str = party.get("end_time")
@@ -192,101 +165,49 @@ class DJEngine:
             f"Respond strictly in JSON format: {{\"artist\": \"Name\", \"title\": \"Song Title\"}}"
         )
 
-        # Build the REST API request
         session = async_get_clientsession(self.hass)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json"}
-        }
+        payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}
 
         try:
             async with session.post(url, json=payload) as response:
                 if response.status != 200:
-                    error_text = await response.text()
-                    _LOGGER.error("Gemini API error: %s", error_text)
+                    _LOGGER.error("Gemini API error: %s", await response.text())
                     return
-                
                 response_data = await response.json()
                 response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
                 
             parsed_data = json.loads(response_text)
             artist = parsed_data.get("artist", "")
             title = parsed_data.get("title", "")
-            _LOGGER.info("LLM Suggested: %s by %s", title, artist)
+            _LOGGER.info("AI DJ Selected: %s by %s", title, artist)
         except Exception as err:
-            _LOGGER.error("Failed to query Gemini API or parse response: %s", err)
+            _LOGGER.error("Failed to query Gemini: %s", err)
             return
 
-        def search_and_add_to_playlist():
-            query = f"{title} {artist}"
-            _LOGGER.info(">>> [YTM] Searching YouTube Music for: %s", query)
-            results = ytm.search(query, filter="songs", limit=3)
-
-            if not results:
-                _LOGGER.error(">>> [CRASH] YTM Search returned 0 results!")
-                return None
+        target_player = party.get("media_player_id")
+        if target_player:
+            # Wir übergeben einfach "Künstler - Titel". Music Assistant sucht dann selbst!
+            search_string = f"{artist} - {title}"
             
-            for res in results:
-                duration_str = res.get("duration", "0:0")
-                parts = duration_str.split(":")
-                seconds = 0
-                if len(parts) == 2:
-                    seconds = int(parts[0]) * 60 + int(parts[1])
-                elif len(parts) == 3:
-                    seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+            try:
+                await self.hass.services.async_call(
+                    domain="music_assistant",
+                    service="play_media",
+                    service_data={
+                        "media_id": search_string, 
+                        "media_type": "track", 
+                        "enqueue": "add"
+                    },
+                    target={"entity_id": target_player}
+                )
                 
-                if MIN_DURATION_SEC <= seconds <= MAX_DURATION_SEC:
-                    vid = res.get("videoId")
-                    if vid:
-                        _LOGGER.error(">>> [YTM] Found Video ID: %s, Adding to playlist...", vid)
-                        ytm.add_playlist_items(playlist_id, [vid])
-                        return vid
-            
-            # Fallback to first result if duration filter fails
-            if results and results[0].get("videoId"):
-                vid = results[0].get("videoId")
-                ytm.add_playlist_items(playlist_id, [vid])
-                return vid
-            return None
-
-        # Execute search and playlist addition
-        video_id = await self.hass.async_add_executor_job(search_and_add_to_playlist)
-
-        if video_id:
-            target_player = party.get("media_player_id")
-            if target_player:
-                mass_uri = f"ytmusic://track/{video_id}"
-                _LOGGER.error(">>> [MASS] Sending command to %s with URI %s", target_player, mass_uri)
-                try:
-                    await self.hass.services.async_call(
-                        domain="music_assistant",
-                        service="play_media",
-                        service_data={"media_id": mass_uri, "media_type": "track", "enqueue": "add"},
-                        target={"entity_id": target_player}
-                    )
-                    _LOGGER.error(">>> [SUCCESS] Song added to Music Assistant Queue!")
-                    
-                    # WICHTIG: Erhöhe unseren internen Queue-Zähler!
-                    if not hasattr(self, "_local_queued_counts"):
-                        self._local_queued_counts = {}
-                    self._local_queued_counts[party["id"]] = self._local_queued_counts.get(party["id"], 0) + 1
-                    
-                except Exception as e:
-                    _LOGGER.error(">>> [CRASH] Home Assistant rejected the service call: %s", e)
-        else:
-            _LOGGER.error(">>> [CRASH] Video ID was empty after search!")
-
-    def _ensure_playlist(self, ytm: YTMusic, name: str) -> str | None:
-        """Find existing playlist or create a new one."""
-        library = ytm.get_library_playlists(limit=50)
-        for pl in library:
-            if pl.get("title") == name:
-                return pl.get("playlistId")
+                # Update internal queue
+                if not hasattr(self, "_local_queued_counts"):
+                    self._local_queued_counts = {}
+                self._local_queued_counts[party["id"]] = self._local_queued_counts.get(party["id"], 0) + 1
                 
-        try:
-            _LOGGER.error(">>> [YTM] Creating new playlist: %s", name)
-            return ytm.create_playlist(name, "AI DJ Generated Playlist")
-        except Exception as e:
-            _LOGGER.error("Could not create playlist: %s", e)
-            return None
+                _LOGGER.info("Erfolgreich an MASS gesendet zur universellen Suche: %s", search_string)
+                
+            except Exception as e:
+                _LOGGER.error("Fehler beim Senden an Music Assistant: %s", e)

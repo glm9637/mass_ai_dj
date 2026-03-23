@@ -1,73 +1,60 @@
-YTM AI DJ: Home Assistant Integration
+# Music Assistant AI DJ (Home Assistant Integration)
 
-YTM AI DJ is a custom Home Assistant integration that acts as an automated DJ. It dynamically manages your music in real-time based on a user-defined vibe and a scheduled energy curve, powered by Google's Gemini LLM.
+Music Assistant AI DJ (formerly YTM AI DJ) is a custom Home Assistant integration that acts as an automated, gapless DJ for your smart home. Powered by Google's Gemini LLM and the Music Assistant (MASS) engine, it dynamically curates and plays music in real-time based on a user-defined vibe and a scheduled energy curve. 
 
-Features
+Because it leverages Music Assistant's universal search, this integration works automatically with Spotify, Apple Music, YouTube Music, Tidal, or even your local NAS—whichever providers you have linked to Music Assistant.
 
-    Config Flow Integration: Set up your YouTube Music credentials and Gemini API Key via the native HA integrations page.
+### Features
 
-    Party Management Dashboard: A custom sidebar UI (Lit element) to create parties, set vibes (e.g., "90s upbeat techno"), and schedule energy curves.
+* **Plug-and-Play Setup:** No complex cookies or header scraping required. Simply paste your free Gemini API Key into the native Home Assistant integrations page.
+* **Universal Provider Support:** Bypasses specific API limitations by feeding text searches directly into Music Assistant. If MASS can play it, the AI DJ can spin it.
+* **Smart Local Queue Engine:** Operates entirely within your local network's memory. It monitors your active MASS queue every 30 seconds and seamlessly queries Gemini for the next track only when the music is about to run out.
+* **Dynamic Energy Curves:** Adjusts its song selections based on the "party progress %" to naturally manage the energy of the room (e.g., warm-up, peak energy, cooldown).
+* **Live History Syncing:** Watches the actual state of your smart speakers. If you manually skip a song or queue one up yourself, the AI DJ reads the live player data and updates its context instantly to prevent duplicates and hallucinations.
+* **Party Management Dashboard:** A custom sidebar UI to create parties, select your target speakers, set vibes (e.g., "90s upbeat techno"), and schedule start/end times.
 
-    Music Assistant (MASS) Integration: Uses the MASS engine to bypass Chromecast "URL blocked" errors, ensuring gapless playback and reliable enqueuing.
+---
 
-    Smart Audio Queue Engine: Monitors your active queue every 30 seconds. When the queue runs low (< 2 songs), it queries Gemini for the next track, adjusting the "party progress %" to manage the energy (warm-up vs. peak vs. cooldown).
+### Setup Requirements
 
-    Duration Filtering: Strictly picks songs between 2 to 7 minutes to avoid "10-hour loops" or 30-second interludes.
+**1. Music Assistant (Mandatory)**
+This integration acts as the "brain," but Music Assistant acts as the "hands." You must have the [Music Assistant Home Assistant Integration](https://www.music-assistant.io/) installed, with at least one music provider (Spotify, YTM, etc.) configured.
 
-    Live Syncing: Watches your actual play history. If you manually skip or play a song, the AI DJ updates its context instantly to prevent duplicates.
+**2. Gemini API Key**
+You need a free API key from [Google AI Studio](https://aistudio.google.com/) to power the DJ's decision-making. 
 
-Setup Requirements
-1. Music Assistant (Mandatory)
+---
 
-For this integration to play music on your speakers (Chromecasts, Sonos, etc.) without stopping, you must have Music Assistant installed and configured with your YouTube Music account.
-2. Python Dependencies
+### Installation (via HACS)
 
-Ensure your environment has access to:
+The easiest way to install this integration is through HACS (Home Assistant Community Store).
 
-    ytmusicapi >= 1.7.0
+1. Open **HACS** in your Home Assistant sidebar.
+2. Navigate to **Integrations**.
+3. Click the three dots in the top right corner and select **Custom repositories**.
+4. Paste the URL of this GitHub repository into the repository field.
+5. Select **Integration** as the category and click **Add**.
+6. Search for **Music Assistant AI DJ** in HACS, click it, and select **Download**.
+7. **Restart Home Assistant** to apply the changes.
 
-    google-generativeai >= 0.5.0
+*(Alternatively, for manual installation, copy the `custom_components/mass_ai_dj` folder from this repository into your Home Assistant `custom_components/` directory and restart).*
 
-Installation
+---
 
-    Copy the custom_components/ytm_ai_dj folder into your custom_components/ directory.
+### Configuration & Usage
 
-    Ensure your manifest.json includes "version": "1.0.0" (Required for HACS).
+1. Go to **Settings** -> **Devices & Services** -> **Add Integration** -> Search for **AI DJ**.
+2. Paste your **Gemini API Key**.
+3. Open the new **AI DJ** panel in your Home Assistant sidebar.
+4. Create a new Party and set your desired vibe.
+5. Select your target Music Assistant speaker from the dropdown (the list is strictly filtered to show only valid MASS players to prevent routing errors).
+6. Click **Start AI DJ** and let the engine take over!
 
-    Restart Home Assistant.
+---
 
-1. Configuration
+### Technologies Used
 
-    Gemini API Key: Get one for free from Google AI Studio.
-
-    YouTube Music Headers:
-
-        Open YouTube Music in your browser -> Developer Tools (F12) -> Network tab.
-
-        Refresh, click a request to music.youtube.com, and copy the Request Headers.
-
-2. Usage
-
-    Go to Settings -> Devices & Services -> Add Integration -> AI DJ.
-
-    Enter your keys and headers.
-
-    Open the AI DJ panel in the sidebar.
-
-    Select a Target Speaker: Choose a Music Assistant player (prefixed with mass_) from the dropdown.
-
-    Start your party!
-
-Technologies Used
-
-    Home Assistant Core: ConfigFlow, Store, WebSockets API.
-
-    Frontend: Lit Elements with real-time polling.
-
-    AI: Google Gemini API (gemini-2.5-flash).
-
-    Music Engine: Music Assistant (MASS) & ytmusicapi.
-
-Note on Playback
-
-To ensure the AI DJ can manage the queue, always start your music session via the Music Assistant interface or by selecting the MASS player in the AI DJ dashboard. Standard Chromecast entities do not support the dynamic enqueuing required for a gapless DJ experience.
+* **Home Assistant Core:** ConfigFlow, Data Store, WebSockets API, and native AIOHTTP.
+* **Frontend:** Lit Elements with real-time WebSocket polling.
+* **AI:** Google Gemini API (gemini-2.5-flash).
+* **Music Engine:** Music Assistant (MASS) Universal Search & Queueing.
