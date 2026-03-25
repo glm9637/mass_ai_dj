@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+        "module": "nodenext",
+        "target": "ESNext",
+        "checkJs": true,
+        "moduleResolution": "nodenext",
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "strictNullChecks": true,
+        "baseUrl": "./",
+        "paths": {
+            "lit": [
+                "https://unpkg.com/lit@3/index.js?module"
+            ]
+        }
+    },
+    "exclude": [
+        "node_modules"
+    ],
+    "paths": {
+        "types/*": [
+            "./types/*"
+        ]
+    }
+}
