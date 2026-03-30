@@ -14,6 +14,7 @@ export class MassAiDjSidebar extends LitElement {
       service: { type: Object },
       _parties: { type: Array },
       _selectedPartyId: { type: String },
+      _newPartyName: { type: String },
     };
   }
 
@@ -28,12 +29,13 @@ export class MassAiDjSidebar extends LitElement {
 
     /** @type {string|null} @private */
     this._selectedPartyId = null;
+
+    /** @type {string} @private */
+    this._newPartyName = "";
   }
 
   /** @type {(() => void)[]} */
   #unsubs = [];
-
-  #newPartyName = "";
 
   connectedCallback() {
     super.connectedCallback();
@@ -61,11 +63,11 @@ export class MassAiDjSidebar extends LitElement {
   }
 
   async _onCreate() {
-    const name = this.#newPartyName.trim();
+    const name = this._newPartyName.trim();
     if (!name) return;
 
     await this.service.createParty({ name });
-    this.#newPartyName = "";
+    this._newPartyName = "";
   }
 
   render() {
@@ -79,14 +81,14 @@ export class MassAiDjSidebar extends LitElement {
           <input
             type="text"
             placeholder="New Party Name..."
-            .value=${this.#newPartyName}
+            .value=${this._newPartyName}
             @input=${(/** @type {{ target: { value: any; }; }} */ e) =>
-              (this.#newPartyName = e.target.value)}
+              (this._newPartyName = e.target.value)}
             @keydown=${this._handleKeyDown}
           />
           <button
             class="btn"
-            ?disabled=${!this.#newPartyName.trim()}
+            ?disabled=${!this._newPartyName.trim()}
             @click=${this._onCreate}
           >
             Add
@@ -125,16 +127,18 @@ export class MassAiDjSidebar extends LitElement {
     `;
   }
 
-  static styles = css`
-    :host {
-      display: block;
-      height: 100%;
-      background: var(--card-background-color, #fafafa);
-      border-right: 1px solid var(--divider-color, #e0e0e0);
-      width: 300px;
-      flex-shrink: 0;
-    }
-    @media (max-width: 800px) {
+  static styles = [
+    sharedStyles,
+    css`
+      :host {
+        display: block;
+        height: 100%;
+        background: var(--card-background-color, #fafafa);
+        border-right: 1px solid var(--divider-color, #e0e0e0);
+        width: 300px;
+        flex-shrink: 0;
+      }
+      @media (max-width: 800px) {
       :host {
         width: 100%;
         border-right: none;
@@ -215,7 +219,7 @@ export class MassAiDjSidebar extends LitElement {
       background: #4caf50;
       box-shadow: 0 0 5px #4caf50;
     }
-  `;
+  `];
 }
 
 customElements.define("mass-ai-dj-sidebar", MassAiDjSidebar);

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 import uuid
 
-from attrs import asdict
+from dataclasses import asdict
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
