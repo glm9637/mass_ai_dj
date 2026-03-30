@@ -1,4 +1,4 @@
-import { LitElement, html } from "https://unpkg.com/lit@3.3.2/index.js?module";
+import { LitElement, html, css } from "https://unpkg.com/lit@3.3.2/index.js?module";
 
 import { sharedStyles } from "./shared-style.js";
 import { ApiService } from "./services/api-service.js";
@@ -14,7 +14,43 @@ class MassAiDjPanel extends LitElement {
   }
 
   static get styles() {
-    return sharedStyles;
+    return [
+      sharedStyles,
+      css`
+        :host {
+          display: block;
+          height: calc(100vh - var(--header-height, 56px));
+          background-color: var(--primary-background-color);
+          box-sizing: border-box;
+        }
+        .app-container {
+          display: flex;
+          flex-direction: row;
+          height: 100%;
+          width: 100%;
+          overflow: hidden;
+        }
+        .content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+          background: var(--primary-background-color);
+        }
+        .welcome {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          align-items: center;
+          justify-content: center;
+          color: var(--secondary-text-color);
+          text-align: center;
+        }
+        .welcome h2 {
+          color: var(--secondary-text-color);
+          margin-bottom: 8px;
+        }
+      `
+    ];
   }
 
   constructor() {
@@ -69,17 +105,36 @@ class MassAiDjPanel extends LitElement {
     if (!this.hass) {
       return html`<ha-circular-progress active></ha-circular-progress>`;
     }
+
+    const showSidebar = !this.narrow || !this._selectedParty;
+    const showContent = !this.narrow || this._selectedParty;
+
     return html`
       <div class="app-container">
-        <mass-ai-dj-sidebar .service=${this.service}></mass-ai-dj-sidebar>
+        ${showSidebar
+          ? html`<mass-ai-dj-sidebar .service=${this.service}></mass-ai-dj-sidebar>`
+          : ""}
 
-        <main class="content">
-          ${this._selectedParty
-            ? html`<mass-ai-dj-party
-                .service=${this.service}
-              ></mass-ai-dj-party>`
-            : html`<div class="welcome">Select a Party</div>`}
-        </main>
+        ${showContent
+          ? html`
+              <main class="content">
+                ${this.narrow && this._selectedParty
+                  ? html`<button class="btn text" style="margin-bottom: 16px; display: flex; align-items: center;" @click=${() => this.service.selectParty(null)}>
+                      <ha-icon icon="mdi:arrow-left" style="margin-right: 8px;"></ha-icon> Back to Parties
+                    </button>`
+                  : ""}
+                ${this._selectedParty
+                  ? html`<mass-ai-dj-party
+                      .service=${this.service}
+                      .party=${this._selectedParty}
+                    ></mass-ai-dj-party>`
+                  : html`<div class="welcome">
+                      <h2>AI DJ</h2>
+                      <p>Select a party from the sidebar to get started.</p>
+                    </div>`}
+              </main>
+            `
+          : ""}
       </div>
     `;
   }

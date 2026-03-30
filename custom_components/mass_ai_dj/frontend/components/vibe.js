@@ -4,6 +4,7 @@ import {
   html,
   css,
 } from "https://unpkg.com/lit@3.3.2/index.js?module";
+import { sharedStyles } from "../shared-style.js";
 
 /** @typedef {import('../types/dto').VibeSessionUpdate} VibeSession */
 
@@ -113,76 +114,66 @@ export class MassAiDjVibeCard extends LitElement {
     `;
   }
 
-  static styles = css`
-    :host {
-      display: block;
-      margin-bottom: 12px;
-    }
-    .vibe-card {
-      display: flex;
-      gap: 16px;
-      align-items: flex-end;
-      padding: 16px;
-      background: var(--secondary-background-color, #f9f9f9);
-      border: 1px solid var(--divider-color, #e0e0e0);
-      border-radius: 8px;
-      position: relative;
-    }
-    .vibe-main {
-      flex: 2;
-    }
-    .vibe-times {
-      flex: 3;
-      display: flex;
-      gap: 8px;
-    }
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-    }
-    label {
-      font-size: 12px;
-      font-weight: bold;
-      margin-bottom: 4px;
-      color: var(--secondary-text-color);
-    }
-    input {
-      padding: 8px;
-      border: 1px solid var(--divider-color);
-      border-radius: 4px;
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
-    }
-    .remove-btn {
-      background: transparent;
-      border: none;
-      color: var(--error-color, #f44336);
-      font-size: 24px;
-      cursor: pointer;
-      line-height: 1;
-      padding: 0 4px;
-      align-self: center;
-    }
-    .remove-btn:hover {
-      color: #d32f2f;
-    }
-
-    @media (max-width: 600px) {
+  static styles = [
+    sharedStyles,
+    css`
+      :host {
+        display: block;
+        margin-bottom: 12px;
+      }
       .vibe-card {
-        flex-direction: column;
-        align-items: stretch;
+        display: flex;
+        gap: 16px;
+        align-items: flex-end;
+        padding: 16px;
+        background: var(--secondary-background-color, #f9f9f9);
+        border: 1px solid var(--divider-color, #e0e0e0);
+        border-radius: var(--ha-card-border-radius, 8px);
+        position: relative;
+      }
+      .vibe-main {
+        flex: 2;
       }
       .vibe-times {
+        flex: 3;
+        display: flex;
+        gap: 8px;
+      }
+      .form-group {
+        display: flex;
         flex-direction: column;
+        flex: 1;
       }
       .remove-btn {
-        position: absolute;
-        top: 8px;
-        right: 8px;
+        background: transparent;
+        border: none;
+        color: var(--error-color, #f44336);
+        font-size: 24px;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0 4px;
+        align-self: center;
       }
-    }
-  `;
+      .remove-btn:hover {
+        color: #d32f2f;
+      }
+
+      @media (max-width: 600px) {
+        .vibe-card {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .vibe-times {
+          flex-direction: column;
+        }
+        .remove-btn {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+        }
+      }
+    `
+  ];
 }
 
 customElements.define("mass-ai-dj-vibe-card", MassAiDjVibeCard);

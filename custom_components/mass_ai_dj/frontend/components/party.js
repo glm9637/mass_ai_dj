@@ -252,10 +252,15 @@ export class MassAiDjParty extends LitElement {
       :host {
         display: block;
       }
-      .grid {
+      .main-grid {
         display: grid;
         grid-template-columns: 1fr 350px;
         gap: 24px;
+      }
+      @media (max-width: 800px) {
+        .main-grid {
+          grid-template-columns: 1fr;
+        }
       }
       .header {
         display: flex;

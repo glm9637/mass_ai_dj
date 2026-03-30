@@ -85,7 +85,7 @@ export class MassAiDjSidebar extends LitElement {
             @keydown=${this._handleKeyDown}
           />
           <button
-            class="add-btn"
+            class="btn"
             ?disabled=${!this.#newPartyName.trim()}
             @click=${this._onCreate}
           >
@@ -129,8 +129,16 @@ export class MassAiDjSidebar extends LitElement {
     :host {
       display: block;
       height: 100%;
-      background: var(--card-background-color);
-      border-right: 1px solid var(--divider-color);
+      background: var(--card-background-color, #fafafa);
+      border-right: 1px solid var(--divider-color, #e0e0e0);
+      width: 300px;
+      flex-shrink: 0;
+    }
+    @media (max-width: 800px) {
+      :host {
+        width: 100%;
+        border-right: none;
+      }
     }
     .sidebar-container {
       display: flex;
@@ -156,26 +164,9 @@ export class MassAiDjSidebar extends LitElement {
     }
     input {
       flex: 1;
-      padding: 8px;
-      border-radius: 4px;
-      border: 1px solid var(--divider-color);
-      background: var(--primary-background-color);
-      color: var(--primary-text-color);
+      min-width: 0;
     }
-    .add-btn {
-      background: var(--primary-color);
-      color: white;
-      border: none;
-      border-radius: 4px;
-      padding: 0 12px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    .add-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
+    
     /* List Styles */
     .party-list {
       flex: 1;
