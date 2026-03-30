@@ -7,8 +7,6 @@ import uuid
 from dataclasses import asdict
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from homeassistant.util import dt as dt_util
-
 from custom_components.mass_ai_dj.backend.model import Party, PartyUpdate, Song, VibeSession
 
 from .const import DOMAIN
@@ -48,8 +46,8 @@ class PartyStore:
                 sessions=[
                     VibeSession(
                         vibe=s["vibe"],
-                        from_date=dt_util.parse_datetime(s["from_date"]) or dt_util.utcnow(),
-                        to_date=dt_util.parse_datetime(s["to_date"]) or dt_util.utcnow()
+                        from_date=s.get("from_date"),
+                        to_date=s.get("to_date")
                     )
                     for s in p.get("sessions", [])
                 ]

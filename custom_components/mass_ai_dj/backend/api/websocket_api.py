@@ -10,8 +10,6 @@ from homeassistant.components.websocket_api import async_register_command
 from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.components.websocket_api.decorators import async_response, websocket_command
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.util import dt as dt_util
-
 from ..model import PartyUpdate, VibeSession
 
 from ..const import DOMAIN
@@ -66,9 +64,9 @@ async def websocket_get_players(
             return
             
         if isinstance(mass_data, dict):
-            mass_client = next(iter(mass_data.values()), None) //#type: ignore
-            if mass_client is not None and hasattr(mass_client, "client"): //#type: ignore
-                mass_client = mass_client.client //#type: ignore
+            mass_client = next(iter(mass_data.values()), None) # type: ignore
+            if mass_client is not None and hasattr(mass_client, "client"): # type: ignore
+                mass_client = mass_client.client # type: ignore
         else:
             mass_client = mass_data
             
@@ -77,12 +75,12 @@ async def websocket_get_players(
             return
             
         # Request all players directly from the MA server
-        ma_players = await mass_client.connection.send_command("players/all") //#type: ignore
+        ma_players = await mass_client.connection.send_command("players/all") # type: ignore
         
-        for player in ma_players: //#type: ignore
-            players.append({ //#type: ignore
-                "entity_id": player.get("player_id"),
-                "name": player.get("name", "Unknown Player")
+        for player in ma_players: # type: ignore
+            players.append({ # type: ignore
+                "entity_id": player.get("player_id"), # type: ignore
+                "name": player.get("name", "Unknown Player") # type: ignore
             })
                 
         connection.send_result(int(msg["id"]), players)
@@ -120,8 +118,8 @@ async def ws_update_party(
         for session in msg["sessions"]:
             updates.sessions.append(VibeSession(
                 vibe=session["vibe"], 
-                from_date= dt_util.parse_datetime(session["from_date"]), 
-                to_date=dt_util.parse_datetime(session["to_date"])
+                from_date=session.get("from_date"), 
+                to_date=session.get("to_date")
             ))
     if "media_player_id" in msg:
         updates.media_player_id = msg["media_player_id"]

@@ -1,6 +1,4 @@
 from dataclasses import dataclass
-from datetime import datetime
-
 @dataclass
 class Song:
     """Class for keeping track of an song."""
@@ -12,8 +10,8 @@ class Song:
 class VibeSession:
     """Class for keeping track of a vibe session."""
     vibe: str
-    from_date: datetime | None
-    to_date: datetime | None
+    from_date: str | None
+    to_date: str | None
 
 @dataclass
 class Party:
