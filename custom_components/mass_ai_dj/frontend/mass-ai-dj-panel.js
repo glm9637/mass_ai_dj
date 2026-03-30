@@ -89,6 +89,8 @@ class MassAiDjPanel extends LitElement {
     this.#unsubs.forEach((unsub) => unsub());
   }
 
+  #dataFetched = false;
+
   /**
    *
    * @param {any} changedProps
@@ -96,12 +98,12 @@ class MassAiDjPanel extends LitElement {
   updated(changedProps) {
     if (changedProps.has("hass") && this.hass) {
       this.service.updateHass(this.hass);
+      if (!this.#dataFetched) {
+        this.#dataFetched = true;
+        this.service.fetchParties();
+        this.service.fetchMediaPlayers();
+      }
     }
-  }
-
-  firstUpdated() {
-    this.service.fetchParties();
-    this.service.fetchMediaPlayers();
   }
 
   render() {
