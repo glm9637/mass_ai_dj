@@ -3,9 +3,9 @@ import {
   html,
   css,
 } from "https://unpkg.com/lit@3.3.2/index.js?module";
-import { sharedStyles } from "shared-style";
+import { sharedStyles } from "../shared-style.js";
 
-/** @typedef {import('../services/data-service').DataService} DataService */
+/** @typedef {import('../services/data-service.js').DataService} DataService */
 /** @typedef {import('../types/dto').Party} Party */
 
 export class MassAiDjSidebar extends LitElement {

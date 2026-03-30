@@ -1,8 +1,8 @@
 import { LitElement, html } from "https://unpkg.com/lit@3.3.2/index.js?module";
 
 import { sharedStyles } from "./shared-style.js";
-import { ApiService } from "services/api-service.js";
-import { DataService } from "services/data-service.js";
+import { ApiService } from "./services/api-service.js";
+import { DataService } from "./services/data-service.js";
 
 class MassAiDjPanel extends LitElement {
   static get properties() {

@@ -1,5 +1,5 @@
-import { PropertyHandler } from "./helper/property-handler";
-import { PropertyStreamHandler } from "./helper/property-stream-handler";
+import { PropertyHandler } from "./helper/property-handler.js";
+import { PropertyStreamHandler } from "./helper/property-stream-handler.js";
 /** @typedef {import('../types/dto.js').Party} Party */
 
 /** @typedef {import('../types/dto.js').Player} Player */
