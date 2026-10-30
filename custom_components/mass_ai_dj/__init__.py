@@ -67,7 +67,7 @@ async def setup_frontend(hass: HomeAssistant) -> None:
         webcomponent_name="mass-ai-dj-panel",
         sidebar_title="AI DJ",
         sidebar_icon="mdi:music-box-multiple",
-        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.3",
+        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.4",
         trust_external=False,
     )
     

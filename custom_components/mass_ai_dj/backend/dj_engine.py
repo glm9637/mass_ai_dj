@@ -30,6 +30,9 @@ MIN_UPCOMING_TRACKS = 2
 MAX_PICK_ATTEMPTS = 3
 # How many of the songs we queued (but that haven't played yet) to remember for duplicate avoidance
 MAX_PENDING = 10
+# Time limits for Music Assistant calls, so a hanging call can't block the party forever
+MASS_SEARCH_TIMEOUT = 30
+MASS_PLAY_TIMEOUT = 45
 
 
 class DJEngine:
@@ -227,6 +230,7 @@ class DJEngine:
         pending = self._pending.setdefault(party.id, [])
         rejected: list[Song] = []
         for _ in range(MAX_PICK_ATTEMPTS):
+            self._set_status(party, f"Asking the AI for a song ({current_session.vibe or 'no vibe text'})…")
             try:
                 song = await self.llm_provider.generate_song(
                     current_session, party.history + pending, rejected
@@ -235,13 +239,31 @@ class DJEngine:
                 self._set_status(party, f"The AI couldn't pick a song: {err}", "error")
                 return
 
-            uri = await self._find_track_uri(mass, song)
+            self._set_status(party, f"AI picked '{song.title}' by {song.artist}, searching Music Assistant…")
+            try:
+                async with asyncio.timeout(MASS_SEARCH_TIMEOUT):
+                    uri = await self._find_track_uri(mass, song)
+            except TimeoutError:
+                self._set_status(party, f"Music Assistant search for '{song.title}' took longer than {MASS_SEARCH_TIMEOUT}s.", "error")
+                return
+            except Exception as err:
+                self._set_status(party, f"Music Assistant search failed: {type(err).__name__}: {err}", "error")
+                return
             if uri is None:
                 self._set_status(party, f"Music Assistant couldn't find '{song.title}' by {song.artist}, asking the AI again…")
                 rejected.append(song)
                 continue
 
-            await mass.player_queues.play_media(queue_id, media=uri, option=option)
+            self._set_status(party, f"Sending '{song.title}' by {song.artist} to the speaker ({uri})…")
+            try:
+                async with asyncio.timeout(MASS_PLAY_TIMEOUT):
+                    await mass.player_queues.play_media(queue_id, media=uri, option=option)
+            except TimeoutError:
+                self._set_status(party, f"The speaker didn't accept '{song.title}' within {MASS_PLAY_TIMEOUT}s. Is it switched on?", "error")
+                return
+            except Exception as err:
+                self._set_status(party, f"Music Assistant couldn't play '{song.title}': {type(err).__name__}: {err}", "error")
+                return
             pending.append(song)
             del pending[:-MAX_PENDING]
             verb = "Now playing" if option == "replace" else "Queued"
