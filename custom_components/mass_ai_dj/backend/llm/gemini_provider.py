@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Any, override
 
 import aiohttp
@@ -16,30 +17,57 @@ _LOGGER = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=90)
 
+SONG_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {"artist": {"type": "STRING"}, "title": {"type": "STRING"}},
+    "required": ["artist", "title"],
+}
+
 class GeminiProvider(LLMProvider):
     def __init__(self, hass: HomeAssistant, api_key: str, model: str):
         self.hass = hass
         self.api_key = api_key
         self.model = model
+        # Picking a song needs no deep reasoning; thinking made requests take over 90s.
+        # Cleared if the model rejects the setting.
+        self._thinking_config: dict[str, Any] | None = {"thinkingLevel": "minimal"}
 
-    @override
-    async def _query_llm(self, prompt: str) -> Song:
-
+    async def _generate(self, prompt: str) -> dict[str, Any]:
+        """Send the prompt, return the raw response data or raise with Google's error message."""
         session = async_get_clientsession(self.hass)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         headers = {"x-goog-api-key": self.api_key}
-        payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}} # type: ignore
+        generation_config: dict[str, Any] = {
+            "responseMimeType": "application/json",
+            "responseSchema": SONG_SCHEMA,
+        }
+        if self._thinking_config:
+            generation_config["thinkingConfig"] = self._thinking_config
+        payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": generation_config}
 
+        async with session.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT) as response:
+            if response.status == 200:
+                return await response.json()
+            body = await response.text()
         try:
-            async with session.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT) as response:
-                if response.status != 200:
-                    body = await response.text()
-                    try:
-                        body = json.loads(body)["error"]["message"]
-                    except (ValueError, KeyError, TypeError):
-                        pass
-                    raise ValueError(f"Gemini API error {response.status} for model '{self.model}': {body}")
-                response_data: dict[str, Any] = await response.json()
+            body = json.loads(body)["error"]["message"]
+        except (ValueError, KeyError, TypeError):
+            pass
+        if response.status == 400 and self._thinking_config and "think" in str(body).lower():
+            _LOGGER.info("Model %s rejected thinkingConfig (%s), retrying without it", self.model, body)
+            self._thinking_config = None
+            return await self._generate(prompt)
+        raise ValueError(f"Gemini API error {response.status} for model '{self.model}': {body}")
+
+    @override
+    async def _query_llm(self, prompt: str) -> Song:
+        try:
+            started = time.monotonic()
+            response_data = await self._generate(prompt)
+            _LOGGER.debug(
+                "Gemini (%s) answered in %.1fs, usage: %s",
+                self.model, time.monotonic() - started, response_data.get("usageMetadata"),
+            )
 
             response_text = _extract_text(response_data)
             parsed_data = json.loads(response_text)
