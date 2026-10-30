@@ -9,7 +9,7 @@ from typing import Any, override
 import aiohttp
 
 from ..model import Song
-from .llm_provider import LLMProvider
+from .llm_provider import LLMProvider, parse_song_json
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.core import HomeAssistant
@@ -83,16 +83,9 @@ class GeminiProvider(LLMProvider):
                 self.model, time.monotonic() - started, response_data.get("usageMetadata"),
             )
 
-            response_text = _extract_text(response_data)
-            parsed_data = json.loads(response_text)
-            if isinstance(parsed_data, list):
-                parsed_data = parsed_data[0] if parsed_data else {}
-            artist = str(parsed_data.get("artist", "")).strip()
-            title = str(parsed_data.get("title", "")).strip()
-            if not artist or not title:
-                raise ValueError(f"Gemini returned no artist or title: {response_text}")
-            _LOGGER.info("AI DJ Selected: %s by %s", title, artist)
-            return Song(title=title, artist=artist)
+            song = parse_song_json(_extract_text(response_data))
+            _LOGGER.info("AI DJ Selected: %s by %s", song.title, song.artist)
+            return song
         except TimeoutError as err:
             _LOGGER.error("Gemini (%s) did not answer within %ss (twice)", self.model, REQUEST_TIMEOUT.total)
             raise ValueError(

@@ -18,27 +18,10 @@
       },
       "ollama": {
         "title": "Ollama Configuration",
-        "description": "Ensure your local Ollama server is running and accessible.",
+        "description": "Ollama must be reachable from Home Assistant. If it runs on another computer, start it with OLLAMA_HOST=0.0.0.0 and use http://<that-computer's-ip>:11434.",
         "data": {
           "ollama_url": "Ollama API URL",
-          "ollama_model": "Model Name (e.g., llama3, mistral)"
-        }
-      }
-    },
-    "error": {
-      "cannot_connect": "Failed to connect to the provider.",
-      "invalid_auth": "Invalid API Key.",
-      "invalid_model": "Model not found. For Ollama: did you pull it? For Gemini: check the model name.",
-      "unknown": "Unexpected error occurred."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "AI DJ Options",
-        "description": "Gemini model used to pick songs, e.g. gemini-flash-lite-latest, gemini-2.5-flash. Faster models work better: the DJ only needs a short answer.",
-        "data": {
-          "gemini_model": "Gemini Model"
+          "ollama_model": "Model name (e.g. llama3.2, qwen3, mistral)"
         }
       }
     },
@@ -49,7 +32,27 @@
       "unknown": "Unexpected error occurred."
     },
     "abort": {
-      "no_options": "Only the Gemini provider has options."
+      "single_instance_allowed": "AI DJ is already set up. Use Reconfigure on it to switch between Gemini and Ollama.",
+      "reconfigure_successful": "AI DJ was reconfigured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AI DJ Options",
+        "description": "Change the model the DJ uses. Faster models work better: the DJ only needs a short answer.",
+        "data": {
+          "gemini_model": "Gemini Model",
+          "ollama_url": "Ollama API URL",
+          "ollama_model": "Ollama Model"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the provider.",
+      "invalid_auth": "Invalid API Key.",
+      "invalid_model": "Model not found. For Ollama: did you pull it? For Gemini: check the model name.",
+      "unknown": "Unexpected error occurred."
     }
   }
 }

@@ -14,3 +14,5 @@ PROVIDER_OLLAMA = "Ollama (Local)"
 # Alias for the current Flash-Lite model: answers in ~1s. The full Flash alias
 # (gemini-flash-latest) took over 100s per request on the free tier.
 DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest"
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_OLLAMA_MODEL = "llama3.2"

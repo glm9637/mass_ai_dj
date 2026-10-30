@@ -37,17 +37,17 @@ PLATFORMS: list[str] = []
 def get_provider(hass: HomeAssistant, entry: ConfigEntry) -> LLMProvider:
     """Factory method to return the correct LLM Provider based on the config."""
     
-    provider_name = entry.data.get(CONF_PROVIDER, PROVIDER_GEMINI)
+    # Options (set through Configure) override what was entered during setup
+    config = {**entry.data, **entry.options}
+    provider_name = config.get(CONF_PROVIDER, PROVIDER_GEMINI)
     if provider_name == PROVIDER_GEMINI:
         return GeminiProvider(
             hass,
-            entry.data[CONF_GEMINI_API_KEY],
-            # The model can be changed later through the options flow
-            entry.options.get(CONF_GEMINI_MODEL)
-            or entry.data.get(CONF_GEMINI_MODEL, DEFAULT_GEMINI_MODEL),
+            config[CONF_GEMINI_API_KEY],
+            config.get(CONF_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL,
         )
     elif provider_name == PROVIDER_OLLAMA:
-        return OllamaProvider(hass, entry.data[CONF_OLLAMA_URL], entry.data[CONF_OLLAMA_MODEL])
+        return OllamaProvider(hass, config[CONF_OLLAMA_URL], config[CONF_OLLAMA_MODEL])
     else:
         raise ValueError(f"Unknown provider: {provider_name}")
     
@@ -69,7 +69,7 @@ async def setup_frontend(hass: HomeAssistant) -> None:
         webcomponent_name="mass-ai-dj-panel",
         sidebar_title="AI DJ",
         sidebar_icon="mdi:music-box-multiple",
-        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.7",
+        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.8",
         trust_external=False,
     )
     
@@ -82,6 +82,18 @@ async def setup_store(hass: HomeAssistant) -> None:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up AI DJ from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+    # Every entry runs its own engine over all parties; two would queue every song twice
+    if running := [
+        key for key, value in hass.data[DOMAIN].items()
+        if isinstance(value, DJEngine) and key != entry.entry_id
+    ]:
+        _LOGGER.error(
+            "Another AI DJ entry is already running (%s). Only one is supported; "
+            "use Reconfigure on it to switch between Gemini and Ollama, and delete '%s'.",
+            running[0], entry.title,
+        )
+        return False
+
     try:
         llm_provider = get_provider(hass, entry)
     except ValueError as e:
