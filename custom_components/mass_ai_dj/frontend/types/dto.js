@@ -27,6 +27,8 @@
  * @property {string} message
  * @property {"info" | "warning" | "error"} level
  * @property {string} updated - ISO Date String
+ * @property {string | null} [last_error] - Last error, kept until a song was played successfully
+ * @property {string | null} [last_error_time] - ISO Date String
  */
 
 /**

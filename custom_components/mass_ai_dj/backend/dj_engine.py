@@ -116,14 +116,26 @@ class DJEngine:
                     _LOGGER.exception("Error processing party %s", party.name)
                     self._set_status(party, f"Unexpected error: {type(err).__name__}: {err}", "error")
 
-    def _set_status(self, party: Party, message: str, level: str = "info") -> None:
+    def _set_status(
+        self, party: Party, message: str, level: str = "info", clear_error: bool = False
+    ) -> None:
         """Remember what the DJ is doing for the panel, and log it."""
-        statuses: dict[str, dict[str, str]] = self.hass.data[DOMAIN].setdefault("status", {})
+        statuses: dict[str, dict[str, str | None]] = self.hass.data[DOMAIN].setdefault("status", {})
         previous = statuses.get(party.id, {})
+        now = dt_util.utcnow().isoformat()
+        # Keep the last error visible until a song made it onto the speaker,
+        # later status updates (e.g. "speaker is idle") would hide it otherwise
+        last_error, last_error_time = previous.get("last_error"), previous.get("last_error_time")
+        if level == "error":
+            last_error, last_error_time = message, now
+        elif clear_error:
+            last_error = last_error_time = None
         statuses[party.id] = {
             "message": message,
             "level": level,
-            "updated": dt_util.utcnow().isoformat(),
+            "updated": now,
+            "last_error": last_error,
+            "last_error_time": last_error_time,
         }
         if previous.get("message") == message:
             return
@@ -267,7 +279,7 @@ class DJEngine:
             pending.append(song)
             del pending[:-MAX_PENDING]
             verb = "Now playing" if option == "replace" else "Queued"
-            self._set_status(party, f"{verb}: '{song.title}' by {song.artist}.")
+            self._set_status(party, f"{verb}: '{song.title}' by {song.artist}.", clear_error=True)
             return
 
         self._set_status(party, f"Gave up: none of the AI's last {MAX_PICK_ATTEMPTS} picks were found in Music Assistant.", "error")

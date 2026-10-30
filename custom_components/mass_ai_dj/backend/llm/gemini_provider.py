@@ -33,7 +33,12 @@ class GeminiProvider(LLMProvider):
         try:
             async with session.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT) as response:
                 if response.status != 200:
-                    raise ValueError(f"Gemini API error {response.status} for model '{self.model}': {await response.text()}")
+                    body = await response.text()
+                    try:
+                        body = json.loads(body)["error"]["message"]
+                    except (ValueError, KeyError, TypeError):
+                        pass
+                    raise ValueError(f"Gemini API error {response.status} for model '{self.model}': {body}")
                 response_data: dict[str, Any] = await response.json()
 
             response_text = _extract_text(response_data)

@@ -149,7 +149,20 @@ export class MassAiDjParty extends LitElement {
                   : "mdi:information"}
             ></ha-icon>
             <span>${this.party.status.message}</span>
-          </div>`
+          </div>
+          ${this.party.status.last_error &&
+          this.party.status.last_error !== this.party.status.message
+            ? html`<div class="status error">
+                <ha-icon icon="mdi:alert-circle"></ha-icon>
+                <span>
+                  Last error
+                  (${new Date(
+                    this.party.status.last_error_time || "",
+                  ).toLocaleTimeString()}):
+                  ${this.party.status.last_error}
+                </span>
+              </div>`
+            : ""}`
         : this.party.active
           ? html`<div class="status info">
               <ha-icon icon="mdi:timer-sand"></ha-icon>
