@@ -9,11 +9,11 @@ UPDATE_PARTY_SCHEMA: VolDictType = {
     vol.Optional("sessions"): [
         {
             vol.Required("vibe"): str,
-            vol.Required("from_date"): str,
-            vol.Required("to_date"): str,
+            vol.Optional("from_date"): vol.Any(str, None),
+            vol.Optional("to_date"): vol.Any(str, None),
         }
     ],
-    vol.Optional("media_player_id"): str,
+    vol.Optional("media_player_id"): vol.Any(str, None),
     vol.Optional("active"): bool,
 }
 

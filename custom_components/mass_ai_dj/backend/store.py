@@ -7,7 +7,7 @@ import uuid
 from dataclasses import asdict
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from custom_components.mass_ai_dj.backend.model import Party, PartyUpdate, Song, VibeSession
+from .model import Party, PartyUpdate, Song, VibeSession
 
 from .const import DOMAIN
 

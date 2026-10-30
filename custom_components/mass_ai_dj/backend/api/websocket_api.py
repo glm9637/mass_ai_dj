@@ -14,6 +14,8 @@ from ..model import PartyUpdate, VibeSession
 
 from ..const import DOMAIN
 from ..store import PartyStore 
+from ..dj_engine import FORCE_POLL_EVENT
+from ..mass import get_mass_client
 from . import dto
 from . import api_schema
 
@@ -53,39 +55,20 @@ async def websocket_get_players(
     hass: HomeAssistant, connection: ActiveConnection, raw_msg: dict[str, vol.Any]
 ) -> None:
     """Returns ONLY players from Music Assistant."""
-        
+
     msg  = cast(dto.GetPlayersMsg, raw_msg)
-    try:
-        players : list[dict[str, str]]= []
-        mass_data = hass.data.get("music_assistant")
-        
-        if not mass_data:
-            connection.send_error(int(msg["id"]), "get_players_failed", "Music Assistant integration not loaded")
-            return
-            
-        if isinstance(mass_data, dict):
-            mass_client = next(iter(mass_data.values()), None) # type: ignore
-            if mass_client is not None and hasattr(mass_client, "client"): # type: ignore
-                mass_client = mass_client.client # type: ignore
-        else:
-            mass_client = mass_data
-            
-        if not mass_client:
-            connection.send_error(int(msg["id"]), "get_players_failed", "Music Assistant client not found")
-            return
-            
-        # Request all players directly from the MA server
-        ma_players = await mass_client.connection.send_command("players/all") # type: ignore
-        
-        for player in ma_players: # type: ignore
-            players.append({ # type: ignore
-                "entity_id": player.get("player_id"), # type: ignore
-                "name": player.get("name", "Unknown Player") # type: ignore
-            })
-                
-        connection.send_result(int(msg["id"]), players)
-    except Exception as err:
-        connection.send_error(int(msg["id"]), "get_players_failed", str(err))
+    mass_client = get_mass_client(hass)
+    if mass_client is None:
+        connection.send_error(int(msg["id"]), "get_players_failed", "Music Assistant integration not loaded")
+        return
+
+    players: list[dict[str, str]] = [
+        {"entity_id": player.player_id, "name": player.name}
+        for player in mass_client.players
+        if player.available and player.enabled and not player.hide_in_ui
+    ]
+    players.sort(key=lambda p: p["name"].lower())
+    connection.send_result(int(msg["id"]), players)
 
 @websocket_command(api_schema.CREATE_PARTY_SCHEMA)
 @async_response
@@ -130,7 +113,7 @@ async def ws_update_party(
     try:
         party = await store.update_party(msg["party_id"], updates)
         if updates.active is True:
-            hass.bus.async_fire("mass_ai_dj_force_poll")
+            hass.bus.async_fire(FORCE_POLL_EVENT, {"party_id": party.id})
             
         connection.send_result(int(msg["id"]), asdict(party))
     except Exception as err:
@@ -174,11 +157,11 @@ async def ws_remove_history(
 @websocket_command(api_schema.CLEAR_HISTORY_SCHEMA)
 @async_response
 async def ws_clear_history(
-    hass: HomeAssistant, connection: ActiveConnection, dto: dict[str, vol.Any]
+    hass: HomeAssistant, connection: ActiveConnection, raw_msg: dict[str, vol.Any]
 ) -> None:
     """Handle clear party history command."""
     
-    msg  = cast(dto.ClearHistoryMsg, dto)
+    msg  = cast(dto.ClearHistoryMsg, raw_msg)
     store = cast(PartyStore, hass.data[DOMAIN].get("store"))
     try:
         await store.clear_history(msg["party_id"])

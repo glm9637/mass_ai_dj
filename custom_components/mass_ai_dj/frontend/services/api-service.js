@@ -136,7 +136,7 @@ export class ApiService {
     }
     try {
       const updatedParty = await this.#hass.callWS({
-        type: "mass_ai_dj/history/delete",
+        type: "mass_ai_dj/parties/history/remove",
         ...dto,
       });
       return updatedParty;
@@ -158,7 +158,7 @@ export class ApiService {
     }
     try {
       const updatedParty = await this.#hass.callWS({
-        type: "mass_ai_dj/history/clear",
+        type: "mass_ai_dj/parties/history/clear",
         ...dto,
       });
       return updatedParty;

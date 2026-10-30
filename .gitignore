@@ -3,3 +3,5 @@ __pycache__
 .env
 
 node_modules
+# local Home Assistant dev instance (created by .devcontainer/setup.sh)
+config/

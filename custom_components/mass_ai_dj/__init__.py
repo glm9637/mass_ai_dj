@@ -16,6 +16,8 @@ from .backend.const import (
     DOMAIN,
     CONF_PROVIDER,
     CONF_GEMINI_API_KEY,
+    CONF_GEMINI_MODEL,
+    DEFAULT_GEMINI_MODEL,
     CONF_OLLAMA_URL,
     CONF_OLLAMA_MODEL,
     PROVIDER_GEMINI,
@@ -36,7 +38,11 @@ def get_provider(hass: HomeAssistant, entry: ConfigEntry) -> LLMProvider:
     
     provider_name = entry.data.get(CONF_PROVIDER, PROVIDER_GEMINI)
     if provider_name == PROVIDER_GEMINI:
-        return GeminiProvider(hass, entry.data[CONF_GEMINI_API_KEY])
+        return GeminiProvider(
+            hass,
+            entry.data[CONF_GEMINI_API_KEY],
+            entry.data.get(CONF_GEMINI_MODEL, DEFAULT_GEMINI_MODEL),
+        )
     elif provider_name == PROVIDER_OLLAMA:
         return OllamaProvider(hass, entry.data[CONF_OLLAMA_URL], entry.data[CONF_OLLAMA_MODEL])
     else:
@@ -60,7 +66,7 @@ async def setup_frontend(hass: HomeAssistant) -> None:
         webcomponent_name="mass-ai-dj-panel",
         sidebar_title="AI DJ",
         sidebar_icon="mdi:music-box-multiple",
-        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=2",
+        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.0",
         trust_external=False,
     )
     

@@ -5,7 +5,7 @@ import {
   css,
 } from "https://unpkg.com/lit@3.3.2/index.js?module";
 import { sharedStyles } from "../shared-style.js"; // Assuming you split this out
-import { VIBE_CHANGE_EVENT } from "./vibe.js";
+import "./vibe.js";
 
 /** @typedef {import('../services/data-service').DataService} DataService */
 /** @typedef {import('../types/dto').Party} Party */
@@ -143,14 +143,19 @@ export class MassAiDjParty extends LitElement {
 
             <div class="form-group">
               <label>Target Media Player (Music Assistant)</label>
-              <select
-                .value=${this.party.media_player_id || ""}
-                @change=${this._updatePlayer}
+              <select @change=${this._updatePlayer}
               >
-                <option value="">-- No Player Selected --</option>
+                <option value="" ?selected=${!this.party.media_player_id}>
+                  -- No Player Selected --
+                </option>
                 ${this._massPlayers.map(
                   (p) => html`
-                    <option value=${p.entity_id}>${p.name}</option>
+                    <option
+                      value=${p.entity_id}
+                      ?selected=${p.entity_id === this.party.media_player_id}
+                    >
+                      ${p.name}
+                    </option>
                   `,
                 )}
               </select>
@@ -162,7 +167,7 @@ export class MassAiDjParty extends LitElement {
                   <mass-ai-dj-vibe-card
                     .session=${session}
                     @remove=${() => this._removeSession(index)}
-                    @${VIBE_CHANGE_EVENT}=${(
+                    @mass-ai-dj-vibe-change=${(
                       /** @type {CustomEvent<import("../types/dto").VibeSession>} */ e,
                     ) => this._handleVibeChange(index, e)}
                   ></mass-ai-dj-vibe-card>

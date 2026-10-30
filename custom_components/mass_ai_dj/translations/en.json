@@ -12,7 +12,8 @@
       "gemini": {
         "title": "Gemini Configuration",
         "data": {
-          "gemini_api_key": "Google Gemini API Key"
+          "gemini_api_key": "Google Gemini API Key",
+          "gemini_model": "Gemini Model"
         }
       },
       "ollama": {
@@ -27,7 +28,7 @@
     "error": {
       "cannot_connect": "Failed to connect to the provider.",
       "invalid_auth": "Invalid API Key.",
-      "invalid_model": "Model not found on your Ollama server. Did you pull it?",
+      "invalid_model": "Model not found. For Ollama: did you pull it? For Gemini: check the model name.",
       "unknown": "Unexpected error occurred."
     }
   }

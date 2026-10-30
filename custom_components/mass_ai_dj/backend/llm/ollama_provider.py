@@ -8,7 +8,7 @@ from typing import Any, override
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from custom_components.mass_ai_dj.backend.model import Song
+from ..model import Song
 
 from .llm_provider import LLMProvider
 

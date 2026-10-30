@@ -2,13 +2,13 @@ from abc import ABC, abstractmethod
 
 from homeassistant.util import dt as dt_util
 
-from custom_components.mass_ai_dj.backend.model import VibeSession
-from custom_components.mass_ai_dj.backend.model import Song
+from ..mass import parse_local_datetime
+from ..model import Song, VibeSession
 
 
 class LLMProvider(ABC):
     """The base strategy for all AI providers."""
-    
+
     @abstractmethod
     async def _query_llm(self, prompt: str) -> Song:
         """
@@ -16,31 +16,47 @@ class LLMProvider(ABC):
         """
         pass
 
-    async def generate_song(self, vibe: VibeSession, history: list[Song]) -> Song:
-        now = dt_util.utcnow()
+    async def generate_song(
+        self, vibe: VibeSession, history: list[Song], rejected: list[Song] | None = None
+    ) -> Song:
+        timeline_note = ""
+        from_dt = parse_local_datetime(vibe.from_date)
+        to_dt = parse_local_datetime(vibe.to_date)
+        if from_dt and to_dt:
+            total_duration = (to_dt - from_dt).total_seconds()
+            elapsed = (dt_util.now() - from_dt).total_seconds()
 
-        overtime_note = ""
-        if(vibe.to_date and vibe.from_date):
-            total_duration = (vibe.to_date - vibe.from_date).total_seconds()
-            elapsed = (now - vibe.from_date).total_seconds()
-            
             progress_percentage = 0
             if total_duration > 0:
-                progress_percentage = int((elapsed / total_duration) * 100)
-                
+                progress_percentage = max(int((elapsed / total_duration) * 100), 0)
+
             if progress_percentage > 100:
-                overtime_note = "The party has gone into overtime, keep the vibe going."
-            
+                timeline_note = "The party has gone into overtime, keep the vibe going."
+            else:
+                timeline_note = (
+                    f"We are {progress_percentage}% through this part of the party. "
+                    "Shape the energy accordingly (warm up early, peak in the middle, wind down at the end)."
+                )
+
         history_str = ", ".join(
             f"{h.title} by {h.artist}" for h in history[-60:]
         )
         if not history_str:
-            history_str = "None yet."
+            history_str = "None yet"
+
+        rejected_note = ""
+        if rejected:
+            rejected_str = ", ".join(f"{s.title} by {s.artist}" for s in rejected)
+            rejected_note = (
+                f"These picks could not be found on the streaming service, choose something else: {rejected_str}. "
+            )
 
         prompt = (
-            f"You are a DJ hosting a party for the following vibe: {vibe.vibe}. "
-            f"Timeline Context:\n"
-            f"These songs were played recently: {history_str}. What is your next pick? {overtime_note} "
-            f"Respond strictly in JSON format: {{\"artist\": \"Name\", \"title\": \"Song Title\"}}"
+            f"You are a DJ hosting a party for the following vibe: {vibe.vibe}.\n"
+            f"Timeline Context: {timeline_note}\n"
+            f"These songs were played or queued recently, do not repeat them: {history_str}.\n"
+            f"{rejected_note}"
+            "What is your next pick? Only pick real, released songs. "
+            "Respond strictly in JSON format: {\"artist\": \"Name\", \"title\": \"Song Title\"}"
         )
         return await self._query_llm(prompt)

@@ -4,8 +4,8 @@ import json
 import logging
 from typing import override
 
-from custom_components.mass_ai_dj.backend.llm.llm_provider import LLMProvider
-from custom_components.mass_ai_dj.backend.model import Song
+from ..model import Song
+from .llm_provider import LLMProvider
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.core import HomeAssistant
@@ -13,15 +13,16 @@ from homeassistant.core import HomeAssistant
 _LOGGER = logging.getLogger(__name__)
 
 class GeminiProvider(LLMProvider):
-    def __init__(self, hass: HomeAssistant, api_key: str):
+    def __init__(self, hass: HomeAssistant, api_key: str, model: str):
         self.hass = hass
         self.api_key = api_key
+        self.model = model
 
     @override
     async def _query_llm(self, prompt: str) -> Song:
         
         session = async_get_clientsession(self.hass)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
         payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}} # type: ignore
 
         try:
@@ -33,8 +34,12 @@ class GeminiProvider(LLMProvider):
                 response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
                 
             parsed_data = json.loads(response_text)
-            artist = parsed_data.get("artist", "")
-            title = parsed_data.get("title", "")
+            if isinstance(parsed_data, list):
+                parsed_data = parsed_data[0] if parsed_data else {}
+            artist = str(parsed_data.get("artist", "")).strip()
+            title = str(parsed_data.get("title", "")).strip()
+            if not artist or not title:
+                raise ValueError(f"Gemini returned no artist or title: {response_text}")
             _LOGGER.info("AI DJ Selected: %s by %s", title, artist)
             return Song(title=title, artist=artist)
         except Exception as err:

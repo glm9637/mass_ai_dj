@@ -1,6 +1,7 @@
 """Background DJ Engine to drive active AI DJ parties."""
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 from typing import TYPE_CHECKING, Any
@@ -10,15 +11,25 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .mass import enum_value, get_mass_client, parse_local_datetime
+from .model import Song
 
 if TYPE_CHECKING:
-    from custom_components.mass_ai_dj.backend.llm.llm_provider import LLMProvider
-    from custom_components.mass_ai_dj.backend.model import Party, VibeSession
+    from .llm.llm_provider import LLMProvider
+    from .model import Party, VibeSession
     from .store import PartyStore
 
 _LOGGER = logging.getLogger(__name__)
 
 POLL_INTERVAL = datetime.timedelta(seconds=30)
+FORCE_POLL_EVENT = "mass_ai_dj_force_poll"
+
+# Keep at least this many upcoming tracks in the MA queue
+MIN_UPCOMING_TRACKS = 2
+# How often the LLM may pick a song that MA can't find before we give up for this round
+MAX_PICK_ATTEMPTS = 3
+# How many of the songs we queued (but that haven't played yet) to remember for duplicate avoidance
+MAX_PENDING = 10
 
 
 class DJEngine:
@@ -28,25 +39,14 @@ class DJEngine:
         """Initialize the DJ Engine."""
         self.hass = hass
         self.llm_provider = llm_provider
-        
+
         self._unsub_interval = None
         self._unsub_force_poll = None
-        
-        self._last_history_ids: dict[str, str] = {}
-        self._local_queued_counts: dict[str, int] = {}
 
-    def _get_mass_client(self) -> Any | None:
-        """Helper to safely retrieve the Music Assistant client instance."""
-        mass_data = self.hass.data.get("music_assistant")
-        if not mass_data:
-            return None
-            
-        if isinstance(mass_data, dict):
-            client = next(iter(mass_data.values()), None) # type: ignore
-            if client is not None and hasattr(client, "client"): # type: ignore
-                return client.client # type: ignore
-            return client # type: ignore
-        return mass_data
+        self._last_history_ids: dict[str, str] = {}
+        # Songs queued by the DJ that did not show up in the history yet
+        self._pending: dict[str, list[Song]] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def start(self) -> None:
         """Start the background monitoring loop."""
@@ -55,10 +55,10 @@ class DJEngine:
             self._unsub_interval = async_track_time_interval(
                 self.hass, self._async_poll, POLL_INTERVAL
             )
-            
+
             # 2. Listener for manual triggers (from the UI)
             self._unsub_force_poll = self.hass.bus.async_listen(
-                "mass_ai_dj_force_poll", self._handle_force_poll_event
+                FORCE_POLL_EVENT, self._handle_force_poll_event
             )
 
             # 3. Trigger initial run immediately
@@ -70,173 +70,230 @@ class DJEngine:
         if self._unsub_interval is not None:
             self._unsub_interval()
             self._unsub_interval = None
-            
+
         if self._unsub_force_poll is not None:
             self._unsub_force_poll()
             self._unsub_force_poll = None
-            
+
         _LOGGER.info("AI DJ Engine stopped.")
 
     async def _handle_force_poll_event(self, event: Event) -> None:
-        """Handle an immediate poll request from the bus."""
+        """Handle an immediate poll request from the bus (e.g. a party got started)."""
         _LOGGER.debug("Force poll event received. Running DJ loop.")
-        await self._process_loop()
+        await self._process_loop(kickoff_party_id=event.data.get("party_id"))
 
     async def _async_poll(self, now: datetime.datetime) -> None:
         """The recurring 30-second polling loop."""
         await self._process_loop()
 
-    async def _process_loop(self) -> None:
+    async def _process_loop(self, kickoff_party_id: str | None = None) -> None:
         """Core processing logic for each active party."""
-        store: PartyStore = self.hass.data[DOMAIN].get("store")
+        store: PartyStore | None = self.hass.data.get(DOMAIN, {}).get("store")
         if not store:
             _LOGGER.error("PartyStore not found in DJ Engine.")
             return
 
-        active_parties = [p for p in store.get_parties() if p.active]
-        
-        for party in active_parties:
-            try:
-                await self._process_party(party, store, self.llm_provider)
-            except Exception as err:
-                _LOGGER.error("Error processing party %s: %s", party.name, err)
+        mass = get_mass_client(self.hass)
+        if mass is None:
+            if any(p.active for p in store.get_parties()):
+                _LOGGER.warning("Music Assistant is not loaded, AI DJ can't control any player.")
+            return
 
-    async def _process_party(self, party: Party, store: PartyStore, llm_provider: LLMProvider) -> None:
+        for party in [p for p in store.get_parties() if p.active]:
+            lock = self._locks.setdefault(party.id, asyncio.Lock())
+            if lock.locked():
+                # A previous run (LLM call / search) for this party is still in progress
+                continue
+            async with lock:
+                try:
+                    await self._process_party(
+                        party, store, mass, kickoff=party.id == kickoff_party_id
+                    )
+                except Exception:
+                    _LOGGER.exception("Error processing party %s", party.name)
+
+    async def _process_party(
+        self, party: Party, store: PartyStore, mass: Any, kickoff: bool
+    ) -> None:
         """Process an individual active party."""
-        target_player = party.media_player_id
-        mass_client = self._get_mass_client()
-        if not target_player or not mass_client:
+        if not party.media_player_id:
+            _LOGGER.debug("[%s] No media player selected.", party.name)
             return
 
-        # Fetch the player's queue state directly from Music Assistant
-        try:
-            queue = mass_client.player_queues.get(target_player)
-        except Exception:
-            queue = None
-            
-        if not queue:
+        queue_id = self._resolve_queue_id(mass, party.media_player_id)
+        queue = mass.player_queues.get(queue_id)
+        if queue is None:
+            _LOGGER.warning("[%s] Music Assistant queue %s not found.", party.name, queue_id)
             return
 
-        state = str(getattr(queue, "state", "idle")).lower()
-        if "." in state:
-            state = state.split(".")[-1]
+        state = enum_value(queue.state)
+        if state in ("playing", "paused"):
+            await self._track_current_song(store, queue, party)
 
-        # Handle Idle Player: Reset internal tracking
-        if state in ["idle", "standby", "off"]:
-            if self._local_queued_counts.get(party.id, 0) > 0:
-                _LOGGER.info("[%s] Player idle. Resetting AI queue counter.", party.name)
-            self._local_queued_counts[party.id] = 0
+        if state != "playing":
+            # Only start playback ourselves when the party was just started from the UI.
+            # Otherwise respect that the user paused / stopped the music.
+            if kickoff:
+                _LOGGER.info("[%s] Starting playback on %s.", party.name, queue_id)
+                await self._generate_and_enqueue(party, mass, queue_id, option="play")
             return
 
-        # Handle Active Player: Track song changes
-        if state in ["playing", "paused"]:
-            await self._handle_active_player(store, queue, party)
+        upcoming = self._upcoming_count(queue)
+        if upcoming < MIN_UPCOMING_TRACKS:
+            _LOGGER.debug(
+                "[%s] Queue low (%s/%s upcoming). Requesting new track.",
+                party.name, upcoming, MIN_UPCOMING_TRACKS,
+            )
+            await self._generate_and_enqueue(party, mass, queue_id, option="add")
 
-        # Trigger generation if queue is low
-        queued_count = self._local_queued_counts.get(party.id, 0)
-        if queued_count < 2:
-            _LOGGER.debug("[%s] Queue low (%s/2). Requesting new track.", party.name, queued_count)
-            await self._generate_and_add_song(party, llm_provider, mass_client)
+    @staticmethod
+    def _resolve_queue_id(mass: Any, player_id: str) -> str:
+        """Return the queue that is actually active for the player (e.g. when it's grouped)."""
+        player = mass.players.get(player_id)
+        if player is not None:
+            if player.synced_to:
+                return player.synced_to
+            if player.active_source and mass.player_queues.get(player.active_source):
+                return player.active_source
+        return player_id
 
-    async def _handle_active_player(self, store: PartyStore, queue: Any, party: Party) -> None:
-        """Detect song changes and manage history."""
-        current_item = getattr(queue, "current_item", None)
-        if not current_item:
+    @staticmethod
+    def _upcoming_count(queue: Any) -> int:
+        """Number of queue items after the currently playing one."""
+        total = queue.items or 0
+        if queue.current_index is None:
+            return total
+        return max(total - queue.current_index - 1, 0)
+
+    async def _track_current_song(self, store: PartyStore, queue: Any, party: Party) -> None:
+        """Detect song changes and add them to the party history."""
+        current_item = queue.current_item
+        if current_item is None:
             return
-            
-        # Extract metadata directly from Music Assistant queue item
-        title = getattr(current_item, "name", None) or getattr(current_item, "title", None)
-        
-        media_item = getattr(current_item, "media_item", current_item)
-        artists = getattr(media_item, "artists", [])
-        
-        if artists and isinstance(artists, list):
-            artist = getattr(artists[0], "name", getattr(artists[0], "title", "Unknown Artist")) # type: ignore
+
+        media_item = current_item.media_item
+        if media_item is not None:
+            title = media_item.name
+            artists = getattr(media_item, "artists", None) or []
+            artist = ", ".join(a.name for a in artists) if artists else None
         else:
-            artist = getattr(current_item, "artist", "Unknown Artist")
-            
-        if title is None or artist is None or artist == "Unknown Artist":
+            # Fallback: queue items are named "Artist - Title"
+            artist, _, title = current_item.name.partition(" - ")
+            if not title:
+                artist, title = None, current_item.name
+
+        if not title or not artist:
             return
-            
+
         current_song_id = f"{artist} - {title}"
-        last_seen = self._last_history_ids.get(party.id)
-                
-        if current_song_id == last_seen:
+        if current_song_id == self._last_history_ids.get(party.id):
             return
-        
         self._last_history_ids[party.id] = current_song_id
 
-        current_q = self._local_queued_counts.get(party.id, 0)
-        if current_q > 0:
-            self._local_queued_counts[party.id] = current_q - 1
-                    
-        in_history = any(
-            title.lower() == h.title.lower() and artist.lower() == h.artist.lower()
-            for h in party.history
-        )
-        if not in_history:
-            await store.add_to_history(party.id, str(artist), str(title))
+        pending = self._pending.get(party.id, [])
+        self._pending[party.id] = [s for s in pending if not _same_song(s, artist, title)]
+
+        last = party.history[-1] if party.history else None
+        if last is None or not _same_song(last, artist, title):
+            await store.add_to_history(party.id, artist, title)
             _LOGGER.info("[%s] Now Playing: %s by %s", party.name, title, artist)
 
-    async def _generate_and_add_song(self, party: Party, llm_provider: LLMProvider, mass_client: Any) -> None:
-        """Trigger LLM and add to Music Assistant queue."""
-        target_player = party.media_player_id
-        if not target_player:
-            return
-        
+    async def _generate_and_enqueue(
+        self, party: Party, mass: Any, queue_id: str, option: str
+    ) -> None:
+        """Ask the LLM for a song, resolve it in Music Assistant and put it on the queue."""
         current_session = self._get_current_session(party)
         if not current_session:
             _LOGGER.warning("[%s] No active session (vibe) found.", party.name)
             return
-        
-        try:
-            song = await llm_provider.generate_song(current_session, party.history)
-            search_string = f"{song.artist} - {song.title}"
-            
-            # Use raw websocket command to bypass Enum import requirements
-            await mass_client.connection.send_command(
-                "player_queues/play_media", 
-                queue_id=target_player, 
-                media=search_string,
-                enqueue="add" # enqueue option ADD is mapped directly
-            )
-            
-            # Update internal queue tracking
-            self._local_queued_counts[party.id] = self._local_queued_counts.get(party.id, 0) + 1
-            _LOGGER.info("[%s] Added to MASS queue: %s", party.name, search_string)
-                
-        except Exception as e:
-            _LOGGER.error("[%s] Song generation or service call failed: %s", party.name, e)
+
+        pending = self._pending.setdefault(party.id, [])
+        rejected: list[Song] = []
+        for _ in range(MAX_PICK_ATTEMPTS):
+            try:
+                song = await self.llm_provider.generate_song(
+                    current_session, party.history + pending, rejected
+                )
+            except Exception as err:
+                _LOGGER.error("[%s] Song generation failed: %s", party.name, err)
+                return
+
+            uri = await self._find_track_uri(mass, song)
+            if uri is None:
+                _LOGGER.info(
+                    "[%s] Music Assistant couldn't find %s by %s, asking again.",
+                    party.name, song.title, song.artist,
+                )
+                rejected.append(song)
+                continue
+
+            await mass.player_queues.play_media(queue_id, media=uri, option=option)
+            pending.append(song)
+            del pending[:-MAX_PENDING]
+            _LOGGER.info("[%s] Queued (%s): %s by %s [%s]", party.name, option, song.title, song.artist, uri)
+            return
+
+        _LOGGER.warning("[%s] Gave up finding a playable song this round.", party.name)
+
+    @staticmethod
+    async def _find_track_uri(mass: Any, song: Song) -> str | None:
+        """Search all MA providers for the song and return the best matching track uri."""
+        if not song.title:
+            return None
+        results = await mass.music.search(
+            f"{song.artist} {song.title}", media_types=["track"], limit=10
+        )
+        tracks = [t for t in results.tracks if getattr(t, "uri", None)]
+        if not tracks:
+            return None
+
+        wanted_title = song.title.lower()
+        wanted_artist = song.artist.lower()
+
+        def score(track: Any) -> int:
+            name = (track.name or "").lower()
+            artists = " ".join(a.name.lower() for a in getattr(track, "artists", None) or [])
+            points = 0
+            if name == wanted_title:
+                points += 4
+            elif wanted_title in name or name in wanted_title:
+                points += 2
+            if wanted_artist and (wanted_artist in artists or artists in wanted_artist):
+                points += 3
+            return points
+
+        best = max(tracks, key=score)
+        if score(best) < 3:
+            # Neither title nor artist really matched; don't play a random song
+            return None
+        return best.uri
 
     def _get_current_session(self, party: Party) -> VibeSession | None:
         """Find the appropriate vibe session based on the current time."""
-        now = dt_util.utcnow()
-        earliest_session: VibeSession | None = None
-        latest_session: VibeSession | None = None
-        not_timed_candidate: VibeSession | None = None
-        
-        for session in party.sessions:
-            from_dt = dt_util.parse_datetime(session.from_date) if session.from_date else None
-            to_dt = dt_util.parse_datetime(session.to_date) if session.to_date else None
-            
-            if from_dt is None or to_dt is None:
-                not_timed_candidate = not_timed_candidate or session
-                continue
+        now = dt_util.now()
+        timed: list[tuple[datetime.datetime, datetime.datetime, VibeSession]] = []
+        untimed: VibeSession | None = None
 
+        for session in party.sessions:
+            from_dt = parse_local_datetime(session.from_date)
+            to_dt = parse_local_datetime(session.to_date)
+            if from_dt is None or to_dt is None:
+                untimed = untimed or session
+                continue
             if from_dt <= now <= to_dt:
                 return session
+            timed.append((from_dt, to_dt, session))
 
-            earliest_dt = dt_util.parse_datetime(earliest_session.from_date) if earliest_session and earliest_session.from_date else None
-            if earliest_session is None or (earliest_dt and from_dt < earliest_dt):
-                earliest_session = session
+        # An untimed session acts as the default whenever no timed session is running
+        if untimed or not timed:
+            return untimed
 
-            latest_dt = dt_util.parse_datetime(latest_session.to_date) if latest_session and latest_session.to_date else None
-            if latest_session is None or (latest_dt and to_dt > latest_dt):
-                latest_session = session
+        # Before the first session: use the first one. After / between sessions: the latest that already started.
+        started = [t for t in timed if t[0] <= now]
+        if not started:
+            return min(timed, key=lambda t: t[0])[2]
+        return max(started, key=lambda t: t[0])[2]
 
-        earliest_dt = dt_util.parse_datetime(earliest_session.from_date) if earliest_session and earliest_session.from_date else None
-        if earliest_session and earliest_dt and earliest_dt <= now:
-            return earliest_session
-        if latest_session:
-            return latest_session
-        return not_timed_candidate
+
+def _same_song(song: Song, artist: str, title: str) -> bool:
+    return song.title.lower() == title.lower() and song.artist.lower() == artist.lower()

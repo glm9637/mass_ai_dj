@@ -98,8 +98,8 @@ export class DataService {
     ) {
       return;
     }
-    const success = await this.#apiService.deleteParty({ party_id: partyId });
-    if (!success) {
+    const response = await this.#apiService.deleteParty({ party_id: partyId });
+    if (response.result !== "success") {
       this.#errors.value = "Failed to delete party";
       return;
     }

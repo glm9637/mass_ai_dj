@@ -16,6 +16,8 @@ from .backend.const import (
     DOMAIN,
     CONF_PROVIDER,
     CONF_GEMINI_API_KEY,
+    CONF_GEMINI_MODEL,
+    DEFAULT_GEMINI_MODEL,
     CONF_OLLAMA_URL,
     CONF_OLLAMA_MODEL,
     PROVIDER_GEMINI,
@@ -25,18 +27,22 @@ from .backend.const import (
 _LOGGER = logging.getLogger(__name__)
 
 async def validate_gemini(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, str]:
-    """Validate the Gemini API key via REST API."""
+    """Validate the Gemini API key and model via REST API."""
     gemini_key = data[CONF_GEMINI_API_KEY]
+    model = data[CONF_GEMINI_MODEL]
     session = async_get_clientsession(hass)
-    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={gemini_key}"
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}?key={gemini_key}"
     
     try:
         async with session.get(gemini_url) as response:
+            if response.status == 404:
+                _LOGGER.error("Gemini model '%s' not found", model)
+                raise InvalidModel
             if response.status != 200:
                 error_data = await response.text()
                 _LOGGER.error("Gemini API rejected key: %s", error_data)
                 raise InvalidAuth
-    except InvalidAuth:
+    except (InvalidAuth, InvalidModel):
         raise
     except Exception as err:
         _LOGGER.error("Gemini connection failed: %s", err)
@@ -110,6 +116,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
+            except InvalidModel:
+                errors["base"] = "invalid_model"
             except Exception:
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -117,7 +125,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data: Mapping[str, str | None] = {CONF_PROVIDER: self.provider, **user_input}
                 return self.async_create_entry(title=info["title"], data=data)
 
-        schema = vol.Schema({vol.Required(CONF_GEMINI_API_KEY): str})
+        schema = vol.Schema({
+            vol.Required(CONF_GEMINI_API_KEY): str,
+            vol.Required(CONF_GEMINI_MODEL, default=DEFAULT_GEMINI_MODEL): str,
+        })
         return self.async_show_form(
             step_id="gemini", data_schema=schema, errors=errors
         )
@@ -156,4 +167,4 @@ class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
 
 class InvalidModel(HomeAssistantError):
-    """Error to indicate the requested Ollama model is not downloaded."""
+    """Error to indicate the requested model is not available."""

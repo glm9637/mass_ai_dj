@@ -4,8 +4,12 @@ DOMAIN = "mass_ai_dj"
 
 CONF_PROVIDER = "provider"
 CONF_GEMINI_API_KEY = "gemini_api_key"
+CONF_GEMINI_MODEL = "gemini_model"
 CONF_OLLAMA_URL = "ollama_url"
 CONF_OLLAMA_MODEL = "ollama_model"
 
 PROVIDER_GEMINI = "Gemini (Cloud)"
 PROVIDER_OLLAMA = "Ollama (Local)"
+
+# Alias that Google keeps pointed at the current Flash model
+DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
