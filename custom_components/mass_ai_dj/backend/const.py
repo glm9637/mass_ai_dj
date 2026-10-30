@@ -11,5 +11,6 @@ CONF_OLLAMA_MODEL = "ollama_model"
 PROVIDER_GEMINI = "Gemini (Cloud)"
 PROVIDER_OLLAMA = "Ollama (Local)"
 
-# Alias that Google keeps pointed at the current Flash model
-DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
+# Alias for the current Flash-Lite model: answers in ~1s. The full Flash alias
+# (gemini-flash-latest) took over 100s per request on the free tier.
+DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest"

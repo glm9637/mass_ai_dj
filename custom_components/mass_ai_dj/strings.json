@@ -31,5 +31,25 @@
       "invalid_model": "Model not found. For Ollama: did you pull it? For Gemini: check the model name.",
       "unknown": "Unexpected error occurred."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AI DJ Options",
+        "description": "Gemini model used to pick songs, e.g. gemini-flash-lite-latest, gemini-2.5-flash. Faster models work better: the DJ only needs a short answer.",
+        "data": {
+          "gemini_model": "Gemini Model"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the provider.",
+      "invalid_auth": "Invalid API Key.",
+      "invalid_model": "Model not found. For Ollama: did you pull it? For Gemini: check the model name.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "no_options": "Only the Gemini provider has options."
+    }
   }
 }

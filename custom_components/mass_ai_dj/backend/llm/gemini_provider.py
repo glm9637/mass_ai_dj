@@ -1,5 +1,6 @@
 
 
+import asyncio
 import json
 import logging
 import time
@@ -15,7 +16,10 @@ from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=90)
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=45)
+# Gemini answers "high demand" (503) or similar now and then; one quick retry usually helps
+RETRY_STATUSES = {429, 500, 503}
+RETRY_DELAY = 3
 
 SONG_SCHEMA = {
     "type": "OBJECT",
@@ -31,6 +35,15 @@ class GeminiProvider(LLMProvider):
         # Picking a song needs no deep reasoning; thinking made requests take over 90s.
         # Cleared if the model rejects the setting.
         self._thinking_config: dict[str, Any] | None = {"thinkingLevel": "minimal"}
+
+    async def _generate_with_retry(self, prompt: str) -> dict[str, Any]:
+        """Retry once on timeouts and temporary server errors."""
+        try:
+            return await self._generate(prompt)
+        except (TimeoutError, TemporaryGeminiError) as err:
+            _LOGGER.info("Gemini (%s) failed temporarily (%s), retrying once", self.model, err or type(err).__name__)
+            await asyncio.sleep(RETRY_DELAY)
+            return await self._generate(prompt)
 
     async def _generate(self, prompt: str) -> dict[str, Any]:
         """Send the prompt, return the raw response data or raise with Google's error message."""
@@ -57,13 +70,14 @@ class GeminiProvider(LLMProvider):
             _LOGGER.info("Model %s rejected thinkingConfig (%s), retrying without it", self.model, body)
             self._thinking_config = None
             return await self._generate(prompt)
-        raise ValueError(f"Gemini API error {response.status} for model '{self.model}': {body}")
+        error_cls = TemporaryGeminiError if response.status in RETRY_STATUSES else ValueError
+        raise error_cls(f"Gemini API error {response.status} for model '{self.model}': {body}")
 
     @override
     async def _query_llm(self, prompt: str) -> Song:
         try:
             started = time.monotonic()
-            response_data = await self._generate(prompt)
+            response_data = await self._generate_with_retry(prompt)
             _LOGGER.debug(
                 "Gemini (%s) answered in %.1fs, usage: %s",
                 self.model, time.monotonic() - started, response_data.get("usageMetadata"),
@@ -80,11 +94,18 @@ class GeminiProvider(LLMProvider):
             _LOGGER.info("AI DJ Selected: %s by %s", title, artist)
             return Song(title=title, artist=artist)
         except TimeoutError as err:
-            _LOGGER.error("Gemini (%s) did not answer within %ss", self.model, REQUEST_TIMEOUT.total)
-            raise ValueError("Gemini request timed out") from err
+            _LOGGER.error("Gemini (%s) did not answer within %ss (twice)", self.model, REQUEST_TIMEOUT.total)
+            raise ValueError(
+                f"Gemini model '{self.model}' did not answer within {REQUEST_TIMEOUT.total:.0f}s. "
+                "Try a faster model (Configure on the integration), e.g. gemini-flash-lite-latest."
+            ) from err
         except Exception as err:
             _LOGGER.error("Failed to query Gemini (%s): %s: %s", self.model, type(err).__name__, err)
             raise
+
+
+class TemporaryGeminiError(ValueError):
+    """Gemini failed in a way that is worth retrying (overloaded, rate limited)."""
 
 
 def _extract_text(response_data: dict[str, Any]) -> str:

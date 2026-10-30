@@ -42,7 +42,9 @@ def get_provider(hass: HomeAssistant, entry: ConfigEntry) -> LLMProvider:
         return GeminiProvider(
             hass,
             entry.data[CONF_GEMINI_API_KEY],
-            entry.data.get(CONF_GEMINI_MODEL, DEFAULT_GEMINI_MODEL),
+            # The model can be changed later through the options flow
+            entry.options.get(CONF_GEMINI_MODEL)
+            or entry.data.get(CONF_GEMINI_MODEL, DEFAULT_GEMINI_MODEL),
         )
     elif provider_name == PROVIDER_OLLAMA:
         return OllamaProvider(hass, entry.data[CONF_OLLAMA_URL], entry.data[CONF_OLLAMA_MODEL])
@@ -67,7 +69,7 @@ async def setup_frontend(hass: HomeAssistant) -> None:
         webcomponent_name="mass-ai-dj-panel",
         sidebar_title="AI DJ",
         sidebar_icon="mdi:music-box-multiple",
-        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.6",
+        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.7",
         trust_external=False,
     )
     
@@ -97,8 +99,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = engine
     engine.start()
 
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload so the new options (e.g. Gemini model) take effect."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

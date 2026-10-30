@@ -7,7 +7,9 @@ from typing import Any, override
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant, Mapping
+from collections.abc import Mapping
+
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -84,6 +86,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> OptionsFlowHandler:
+        """Return the options flow (only Gemini has options)."""
+        return OptionsFlowHandler()
+
     def __init__(self) -> None:
         """Initialize the config flow state."""
         self.provider: str | None = None
@@ -159,6 +167,41 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="ollama", data_schema=schema, errors=errors
         )
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Change the Gemini model of an existing entry."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self.config_entry
+        if entry.data.get(CONF_PROVIDER, PROVIDER_GEMINI) != PROVIDER_GEMINI:
+            return self.async_abort(reason="no_options")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                await validate_gemini(
+                    self.hass,
+                    {CONF_GEMINI_API_KEY: entry.data[CONF_GEMINI_API_KEY], **user_input},
+                )
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except InvalidModel:
+                errors["base"] = "invalid_model"
+            except Exception:
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(data=user_input)
+
+        current = entry.options.get(CONF_GEMINI_MODEL) or entry.data.get(
+            CONF_GEMINI_MODEL, DEFAULT_GEMINI_MODEL
+        )
+        schema = vol.Schema({vol.Required(CONF_GEMINI_MODEL, default=current): str})
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
