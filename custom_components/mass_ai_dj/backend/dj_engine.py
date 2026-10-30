@@ -11,7 +11,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .mass import enum_value, get_mass_client, parse_local_datetime
+from .mass import describe_mass_problem, enum_value, get_mass_client, parse_local_datetime
 from .model import Song
 
 if TYPE_CHECKING:
@@ -96,7 +96,7 @@ class DJEngine:
         mass = get_mass_client(self.hass)
         if mass is None:
             if any(p.active for p in store.get_parties()):
-                _LOGGER.warning("Music Assistant is not loaded, AI DJ can't control any player.")
+                _LOGGER.warning("AI DJ can't control any player: %s", describe_mass_problem(self.hass))
             return
 
         for party in [p for p in store.get_parties() if p.active]:

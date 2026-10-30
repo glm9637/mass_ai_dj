@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import  HomeAssistant
 from homeassistant.components import panel_custom
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.loader import async_get_integration
 
 
 from .backend.const import (
@@ -66,7 +67,7 @@ async def setup_frontend(hass: HomeAssistant) -> None:
         webcomponent_name="mass-ai-dj-panel",
         sidebar_title="AI DJ",
         sidebar_icon="mdi:music-box-multiple",
-        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.0",
+        module_url="/mass_ai_dj_frontend/mass-ai-dj-panel.js?v=0.3.2",
         trust_external=False,
     )
     
@@ -88,6 +89,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if "store" not in hass.data[DOMAIN]:
         await setup_store(hass)
         await setup_frontend(hass)
+
+    integration = await async_get_integration(hass, DOMAIN)
+    _LOGGER.info("Setting up AI DJ version %s", integration.version)
 
     engine = DJEngine(hass, llm_provider)
     hass.data[DOMAIN][entry.entry_id] = engine

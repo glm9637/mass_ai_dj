@@ -26,6 +26,19 @@ def get_mass_client(hass: HomeAssistant) -> Any | None:
     return None
 
 
+def describe_mass_problem(hass: HomeAssistant) -> str:
+    """Explain why get_mass_client returned None, for error messages."""
+    entries = hass.config_entries.async_entries(MASS_DOMAIN)
+    if not entries:
+        return (
+            "The Music Assistant integration is not set up in Home Assistant. "
+            "Add it under Settings > Devices & Services > Add Integration > Music Assistant "
+            "(the Music Assistant add-on alone is not enough)."
+        )
+    states = ", ".join(f"'{e.title}': {e.state.value}" for e in entries)
+    return f"No loaded Music Assistant integration entry (found {states})."
+
+
 def enum_value(value: Any) -> str:
     """Return the plain lowercase string of an enum (or string) value."""
     return str(getattr(value, "value", value)).lower()

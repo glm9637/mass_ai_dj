@@ -15,7 +15,7 @@ from ..model import PartyUpdate, VibeSession
 from ..const import DOMAIN
 from ..store import PartyStore 
 from ..dj_engine import FORCE_POLL_EVENT
-from ..mass import get_mass_client
+from ..mass import describe_mass_problem, get_mass_client
 from . import dto
 from . import api_schema
 
@@ -59,7 +59,7 @@ async def websocket_get_players(
     msg  = cast(dto.GetPlayersMsg, raw_msg)
     mass_client = get_mass_client(hass)
     if mass_client is None:
-        connection.send_error(int(msg["id"]), "get_players_failed", "Music Assistant integration not loaded")
+        connection.send_error(int(msg["id"]), "get_players_failed", describe_mass_problem(hass))
         return
 
     players: list[dict[str, str]] = [

@@ -80,8 +80,6 @@ class MassAiDjPanel extends LitElement {
         this._selectedParty = p;
       }),
     ];
-
-    this.service.fetchParties();
   }
 
   disconnectedCallback() {
