@@ -93,58 +93,75 @@ class DJEngine:
             _LOGGER.error("PartyStore not found in DJ Engine.")
             return
 
+        active_parties = [p for p in store.get_parties() if p.active]
         mass = get_mass_client(self.hass)
         if mass is None:
-            if any(p.active for p in store.get_parties()):
-                _LOGGER.warning("AI DJ can't control any player: %s", describe_mass_problem(self.hass))
+            for party in active_parties:
+                self._set_status(party, f"Can't reach Music Assistant: {describe_mass_problem(self.hass)}", "error")
             return
 
-        for party in [p for p in store.get_parties() if p.active]:
+        for party in active_parties:
+            kickoff = party.id == kickoff_party_id
             lock = self._locks.setdefault(party.id, asyncio.Lock())
-            if lock.locked():
+            if lock.locked() and not kickoff:
                 # A previous run (LLM call / search) for this party is still in progress
                 continue
             async with lock:
                 try:
-                    await self._process_party(
-                        party, store, mass, kickoff=party.id == kickoff_party_id
-                    )
-                except Exception:
+                    await self._process_party(party, store, mass, kickoff=kickoff)
+                except Exception as err:
                     _LOGGER.exception("Error processing party %s", party.name)
+                    self._set_status(party, f"Unexpected error: {type(err).__name__}: {err}", "error")
+
+    def _set_status(self, party: Party, message: str, level: str = "info") -> None:
+        """Remember what the DJ is doing for the panel, and log it."""
+        statuses: dict[str, dict[str, str]] = self.hass.data[DOMAIN].setdefault("status", {})
+        previous = statuses.get(party.id, {})
+        statuses[party.id] = {
+            "message": message,
+            "level": level,
+            "updated": dt_util.utcnow().isoformat(),
+        }
+        if previous.get("message") == message:
+            return
+        log_level = logging.ERROR if level == "error" else logging.WARNING if level == "warning" else logging.INFO
+        _LOGGER.log(log_level, "[%s] %s", party.name, message)
 
     async def _process_party(
         self, party: Party, store: PartyStore, mass: Any, kickoff: bool
     ) -> None:
         """Process an individual active party."""
         if not party.media_player_id:
-            _LOGGER.debug("[%s] No media player selected.", party.name)
+            self._set_status(party, "No speaker selected.", "warning")
             return
 
         queue_id = self._resolve_queue_id(mass, party.media_player_id)
         queue = mass.player_queues.get(queue_id)
         if queue is None:
-            _LOGGER.warning("[%s] Music Assistant queue %s not found.", party.name, queue_id)
+            self._set_status(party, f"Speaker '{party.media_player_id}' not found in Music Assistant.", "error")
             return
 
         state = enum_value(queue.state)
         if state in ("playing", "paused"):
             await self._track_current_song(store, queue, party)
 
+        if kickoff:
+            # Starting the party takes over the speaker: replace whatever was queued before
+            self._set_status(party, f"Starting: picking the first song for {queue.display_name}…")
+            await self._generate_and_enqueue(party, mass, queue_id, option="replace")
+            return
+
         if state != "playing":
-            # Only start playback ourselves when the party was just started from the UI.
-            # Otherwise respect that the user paused / stopped the music.
-            if kickoff:
-                _LOGGER.info("[%s] Starting playback on %s.", party.name, queue_id)
-                await self._generate_and_enqueue(party, mass, queue_id, option="play")
+            # Respect that the user paused / stopped the music.
+            self._set_status(party, f"Speaker is {state}. Stop and start the AI DJ to restart the music.", "warning")
             return
 
         upcoming = self._upcoming_count(queue)
         if upcoming < MIN_UPCOMING_TRACKS:
-            _LOGGER.debug(
-                "[%s] Queue low (%s/%s upcoming). Requesting new track.",
-                party.name, upcoming, MIN_UPCOMING_TRACKS,
-            )
+            self._set_status(party, f"Queue is running low ({upcoming} upcoming), picking a song…")
             await self._generate_and_enqueue(party, mass, queue_id, option="add")
+        else:
+            self._set_status(party, f"Playing, {upcoming} songs queued. Waiting until fewer than {MIN_UPCOMING_TRACKS} are left.")
 
     @staticmethod
     def _resolve_queue_id(mass: Any, player_id: str) -> str:
@@ -204,7 +221,7 @@ class DJEngine:
         """Ask the LLM for a song, resolve it in Music Assistant and put it on the queue."""
         current_session = self._get_current_session(party)
         if not current_session:
-            _LOGGER.warning("[%s] No active session (vibe) found.", party.name)
+            self._set_status(party, "No vibe defined. Add a vibe slot and save the timeline.", "warning")
             return
 
         pending = self._pending.setdefault(party.id, [])
@@ -215,25 +232,23 @@ class DJEngine:
                     current_session, party.history + pending, rejected
                 )
             except Exception as err:
-                _LOGGER.error("[%s] Song generation failed: %s", party.name, err)
+                self._set_status(party, f"The AI couldn't pick a song: {err}", "error")
                 return
 
             uri = await self._find_track_uri(mass, song)
             if uri is None:
-                _LOGGER.info(
-                    "[%s] Music Assistant couldn't find %s by %s, asking again.",
-                    party.name, song.title, song.artist,
-                )
+                self._set_status(party, f"Music Assistant couldn't find '{song.title}' by {song.artist}, asking the AI again…")
                 rejected.append(song)
                 continue
 
             await mass.player_queues.play_media(queue_id, media=uri, option=option)
             pending.append(song)
             del pending[:-MAX_PENDING]
-            _LOGGER.info("[%s] Queued (%s): %s by %s [%s]", party.name, option, song.title, song.artist, uri)
+            verb = "Now playing" if option == "replace" else "Queued"
+            self._set_status(party, f"{verb}: '{song.title}' by {song.artist}.")
             return
 
-        _LOGGER.warning("[%s] Gave up finding a playable song this round.", party.name)
+        self._set_status(party, f"Gave up: none of the AI's last {MAX_PICK_ATTEMPTS} picks were found in Music Assistant.", "error")
 
     @staticmethod
     async def _find_track_uri(mass: Any, song: Song) -> str | None:

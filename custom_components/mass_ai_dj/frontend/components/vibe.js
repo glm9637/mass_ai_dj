@@ -176,4 +176,6 @@ export class MassAiDjVibeCard extends LitElement {
   ];
 }
 
-customElements.define("mass-ai-dj-vibe-card", MassAiDjVibeCard);
+if (!customElements.get("mass-ai-dj-vibe-card")) {
+  customElements.define("mass-ai-dj-vibe-card", MassAiDjVibeCard);
+}

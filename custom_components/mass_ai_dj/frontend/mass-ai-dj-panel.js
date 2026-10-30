@@ -85,7 +85,12 @@ class MassAiDjPanel extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.#unsubs.forEach((unsub) => unsub());
+    clearInterval(this.#refreshTimer);
+    this.#refreshTimer = undefined;
   }
+
+  /** @type {ReturnType<typeof setInterval> | undefined} */
+  #refreshTimer;
 
   #dataFetched = false;
 
@@ -101,6 +106,8 @@ class MassAiDjPanel extends LitElement {
         this.service.fetchParties();
         this.service.fetchMediaPlayers();
       }
+      // Keep DJ status and history fresh while the panel is open
+      this.#refreshTimer ??= setInterval(() => this.service.fetchParties(), 5000);
     }
   }
 
@@ -146,4 +153,6 @@ class MassAiDjPanel extends LitElement {
   }
 }
 
-customElements.define("mass-ai-dj-panel", MassAiDjPanel);
+if (!customElements.get("mass-ai-dj-panel")) {
+  customElements.define("mass-ai-dj-panel", MassAiDjPanel);
+}

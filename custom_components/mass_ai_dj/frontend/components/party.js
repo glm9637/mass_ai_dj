@@ -62,7 +62,10 @@ export class MassAiDjParty extends LitElement {
    * @param {import('lit').PropertyValues} changedProps
    */
   willUpdate(changedProps) {
-    if (changedProps.has("party") && this.party) {
+    if (!changedProps.has("party") || !this.party) return;
+    const previous = changedProps.get("party");
+    // Background refreshes must not throw away unsaved edits
+    if (!this._isDirty || !previous || previous.id !== this.party.id) {
       this._resetDraft();
     }
   }
@@ -135,6 +138,24 @@ export class MassAiDjParty extends LitElement {
           ${this.party.active ? "Stop AI DJ" : "Start AI DJ"}
         </button>
       </div>
+
+      ${this.party.active && this.party.status
+        ? html`<div class="status ${this.party.status.level}">
+            <ha-icon
+              icon=${this.party.status.level === "error"
+                ? "mdi:alert-circle"
+                : this.party.status.level === "warning"
+                  ? "mdi:alert"
+                  : "mdi:information"}
+            ></ha-icon>
+            <span>${this.party.status.message}</span>
+          </div>`
+        : this.party.active
+          ? html`<div class="status info">
+              <ha-icon icon="mdi:timer-sand"></ha-icon>
+              <span>Waiting for the DJ…</span>
+            </div>`
+          : ""}
 
       <div class="main-grid">
         <div class="editor-column">
@@ -273,6 +294,23 @@ export class MassAiDjParty extends LitElement {
         align-items: center;
         margin-bottom: 16px;
       }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        margin-bottom: 16px;
+        border-radius: 8px;
+        border-left: 4px solid var(--info-color, #039be5);
+        background: var(--card-background-color);
+        color: var(--primary-text-color);
+      }
+      .status.warning {
+        border-left-color: var(--warning-color, #ffa600);
+      }
+      .status.error {
+        border-left-color: var(--error-color, #db4437);
+      }
       .history-list {
         max-height: 500px;
         overflow-y: auto;
@@ -319,4 +357,6 @@ export class MassAiDjParty extends LitElement {
   ];
 }
 
-customElements.define("mass-ai-dj-party", MassAiDjParty);
+if (!customElements.get("mass-ai-dj-party")) {
+  customElements.define("mass-ai-dj-party", MassAiDjParty);
+}

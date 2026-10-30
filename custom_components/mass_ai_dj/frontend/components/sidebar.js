@@ -225,4 +225,6 @@ export class MassAiDjSidebar extends LitElement {
   `];
 }
 
-customElements.define("mass-ai-dj-sidebar", MassAiDjSidebar);
+if (!customElements.get("mass-ai-dj-sidebar")) {
+  customElements.define("mass-ai-dj-sidebar", MassAiDjSidebar);
+}

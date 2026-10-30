@@ -45,7 +45,11 @@ async def ws_get_parties(
         return
         
     # Convert Dataclasses to Dicts for JSON serialization
-    parties = [asdict(p) for p in store.get_parties()]
+    statuses = hass.data[DOMAIN].get("status", {})
+    parties = [
+        {**asdict(p), "status": statuses.get(p.id) if p.active else None}
+        for p in store.get_parties()
+    ]
     connection.send_result(msg["id"], parties)
 
 

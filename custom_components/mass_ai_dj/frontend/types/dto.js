@@ -19,6 +19,14 @@
  * @property {string|null} media_player_id
  * @property {VibeSession[]} sessions
  * @property {Song[]} history
+ * @property {PartyStatus | null} [status] - What the DJ is currently doing (only for active parties)
+ */
+
+/**
+ * @typedef {Object} PartyStatus
+ * @property {string} message
+ * @property {"info" | "warning" | "error"} level
+ * @property {string} updated - ISO Date String
  */
 
 /**

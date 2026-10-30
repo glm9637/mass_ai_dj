@@ -55,6 +55,11 @@ export class DataService {
     const parties = await this.#apiService.fetchParties();
     if (parties) {
       this.#parties.value = parties;
+      const selected = this.#selectedParty.value;
+      const fresh = selected && parties.find((p) => p.id === selected.id);
+      if (fresh && JSON.stringify(fresh) !== JSON.stringify(selected)) {
+        this.#selectedParty.value = fresh;
+      }
     } else {
       this.#errors.value = "Failed to fetch parties";
     }
